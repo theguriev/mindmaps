@@ -31,22 +31,26 @@ export function EdgeScene ({
         onPointerDown={() => {}}
         onClick={(e) => onColor(edge, e)}
       />
-      <triangle
-        x={edge.x4}
-        y={edge.y4}
-        size={edge.strokeWidth}
-        pointRight={edge.isRightSide}
-        fill={edge.stroke}
-      />
-      <triangle
-        x={edge.x}
-        y={edge.y}
-        size={edge.strokeWidth + 1}
-        pointRight={!edge.isRightSide}
-        fill={edge.stroke}
-        stroke="#ffffff"
-        strokeWidth={1}
-      />
+      {!edge.sticky && (
+        <>
+          <triangle
+            x={edge.x4}
+            y={edge.y4}
+            size={edge.strokeWidth}
+            pointRight={edge.isRightSide}
+            fill={edge.stroke}
+          />
+          <triangle
+            x={edge.x}
+            y={edge.y}
+            size={edge.strokeWidth + 1}
+            pointRight={!edge.isRightSide}
+            fill={edge.stroke}
+            stroke="#ffffff"
+            strokeWidth={1}
+          />
+        </>
+      )}
     </group>
   )
 }

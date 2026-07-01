@@ -54,4 +54,19 @@ describe('geometry', () => {
     const pos = getNewPosition(3)
     expect(Number.isFinite(pos.x) && Number.isFinite(pos.y)).toBe(true)
   })
+
+  it('flags edges into sticky notes (dashed tether, no arrow-heads)', () => {
+    const sticky = createEdge(
+      'note',
+      { id: 'note', name: '', x: 40, y: 150, parent: 0, sticky: true },
+      { name: 'r', x: 0, y: 0 }
+    )
+    expect(sticky.sticky).toBe(true)
+    const normal = createEdge(
+      'c',
+      { id: 'c', name: '', x: 40, y: 10, parent: 0 },
+      { name: 'r', x: 0, y: 0 }
+    )
+    expect(normal.sticky).toBe(false)
+  })
 })

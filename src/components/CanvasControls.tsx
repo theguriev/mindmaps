@@ -1,14 +1,18 @@
 import {
   MinusIcon,
   PlusIcon,
+  MaximizeIcon,
   Undo2Icon,
   Redo2Icon,
   type LucideIcon
 } from 'lucide-react'
 
 interface CanvasControlsProps {
+  scale: number
   onZoomOut: () => void
   onZoomIn: () => void
+  onZoom100: () => void
+  onZoomFit: () => void
   onUndo: () => void
   onRedo: () => void
   canUndo: boolean
@@ -42,10 +46,13 @@ function CtrlButton ({
 
 const Divider = () => <div className="mx-0.5 h-5 w-px bg-border" />
 
-/** Floating bottom-right controls: zoom (− / +) and history (undo / redo). */
+/** Floating bottom-right controls: zoom (− / % / + / fit) and history. */
 export function CanvasControls ({
+  scale,
   onZoomOut,
   onZoomIn,
+  onZoom100,
+  onZoomFit,
   onUndo,
   onRedo,
   canUndo,
@@ -56,7 +63,19 @@ export function CanvasControls ({
       <div className="flex items-center rounded-2xl border bg-background p-1 shadow-lg">
         <CtrlButton icon={MinusIcon} label="Zoom out  −" onClick={onZoomOut} />
         <Divider />
+        <button
+          type="button"
+          title="Zoom to 100%  ⇧0"
+          aria-label="Zoom to 100%"
+          onClick={onZoom100}
+          className="flex h-9 min-w-[3.25rem] items-center justify-center rounded-xl px-1 text-xs font-medium text-foreground/80 tabular-nums transition-colors hover:bg-muted"
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <Divider />
         <CtrlButton icon={PlusIcon} label="Zoom in  +" onClick={onZoomIn} />
+        <Divider />
+        <CtrlButton icon={MaximizeIcon} label="Zoom to fit  ⇧1" onClick={onZoomFit} />
       </div>
       <div className="flex items-center rounded-2xl border bg-background p-1 shadow-lg">
         <CtrlButton icon={Undo2Icon} label="Undo  ⌘Z" onClick={onUndo} disabled={!canUndo} />

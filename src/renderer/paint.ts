@@ -77,8 +77,15 @@ function paintBox (ctx: CanvasRenderingContext2D, p: BoxProps): void {
   const y = p.y ?? 0
   roundRect(ctx, x, y, p.width, p.height, p.radius ?? 0)
   if (p.fill) {
+    ctx.save()
+    if (p.shadow) {
+      ctx.shadowColor = 'rgba(0,0,0,0.18)'
+      ctx.shadowBlur = 8
+      ctx.shadowOffsetY = 3
+    }
     ctx.fillStyle = p.fill
     ctx.fill()
+    ctx.restore()
   }
   if (p.stroke) {
     ctx.strokeStyle = p.stroke

@@ -20,6 +20,8 @@ export interface RawNode {
   width?: number
   height?: number
   editing?: boolean
+  /** A free-floating yellow sticky note tethered to its parent by a dashed line. */
+  sticky?: boolean
   component?: 'root' | 'node'
   isRightSide?: boolean
   isUpSide?: boolean
@@ -55,6 +57,8 @@ export interface PathEdge {
   stroke: string
   lineStyle: LineStyle
   lineShape: LineShape
+  /** Edge into a sticky note: dashed tether, no arrow-heads. */
+  sticky: boolean
 }
 
 export type Adjacency = Map<NodeId, RawNode>

@@ -11,7 +11,13 @@ import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
 import { getMap, saveMap } from '@/api/maps'
 import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
-import { ArrowLeftIcon, DownloadIcon, KeyboardIcon, SaveIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  DownloadIcon,
+  KeyboardIcon,
+  SaveIcon,
+  StickyNoteIcon
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -148,6 +154,7 @@ function Editor ({ id }: { id: string }) {
     list,
     paths,
     add,
+    addSticky,
     remove,
     removeMany,
     update,
@@ -257,6 +264,15 @@ function Editor ({ id }: { id: string }) {
   }
 
   const onRemove = (nodeId: NodeId) => remove(nodeId)
+
+  // Attach a sticky note to the active node (or the root) and edit it right away.
+  const onAddSticky = () => {
+    const newId = addSticky(activeId ?? 0)
+    setSelectedIds(new Set([newId]))
+    setEditing(newId)
+    // The `addSticky` already recorded a step; fold the initial typing into it.
+    editDirtyRef.current = true
+  }
 
   const onBackgroundPointerDown = (e: PointerPayload) => {
     closeEditingIfAny()
@@ -570,6 +586,15 @@ function Editor ({ id }: { id: string }) {
         }
         right={
           <>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Add sticky note"
+              onClick={onAddSticky}
+            >
+              <StickyNoteIcon />
+            </Button>
+            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
             <Button variant="ghost" size="icon" title="Save  ⌘S" onClick={save}>
               <SaveIcon />
             </Button>
@@ -648,8 +673,11 @@ function Editor ({ id }: { id: string }) {
           />
         )}
         <CanvasControls
+          scale={viewport.scale}
           onZoomOut={viewport.zoomOut}
           onZoomIn={viewport.zoomIn}
+          onZoom100={viewport.zoomTo100}
+          onZoomFit={() => viewport.zoomToFit(contentBounds())}
           onUndo={undo}
           onRedo={redo}
           canUndo={canUndo}

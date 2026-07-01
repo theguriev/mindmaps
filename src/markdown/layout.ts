@@ -44,6 +44,8 @@ export interface MarkdownLayout {
 
 export interface LayoutOptions {
   align?: 'left' | 'right'
+  /** Override the body font family (e.g. a handwriting font for sticky notes). */
+  fontFamily?: string
 }
 
 export const MD_FONT =
@@ -86,11 +88,18 @@ const TABLE_MIN_COL = 36
 
 function fontString (
   size: number,
-  opts: { bold?: boolean; italic?: boolean; heading?: boolean; mono?: boolean }
+  opts: {
+    bold?: boolean
+    italic?: boolean
+    heading?: boolean
+    mono?: boolean
+    family?: string
+  }
 ): string {
   const weight = opts.bold ? 700 : opts.heading ? 600 : 400
   const italic = opts.italic ? 'italic ' : ''
-  return `${italic}${weight} ${size}px ${opts.mono ? MD_MONO : MD_FONT}`
+  const family = opts.mono ? MD_MONO : (opts.family ?? MD_FONT)
+  return `${italic}${weight} ${size}px ${family}`
 }
 
 interface DraftRun {
@@ -135,7 +144,8 @@ interface DraftLine {
 function layoutTable (
   ctx: CanvasRenderingContext2D,
   rows: InlineRun[][][],
-  aligns: CellAlign[]
+  aligns: CellAlign[],
+  family?: string
 ): { width: number; height: number; runs: SubRun[]; decorations: SubDeco[] } {
   const nCols = rows.reduce((m, r) => Math.max(m, r.length), 0)
   if (nCols === 0) return { width: 0, height: 0, runs: [], decorations: [] }
@@ -150,7 +160,8 @@ function layoutTable (
     cells[r] = []
     for (let c = 0; c < nCols; c++) {
       const m = measureInline(ctx, rows[r][c] ?? [], BASE_SIZE, {
-        bold: r === 0
+        bold: r === 0,
+        family
       })
       cells[r][c] = m
       colW[c] = Math.max(colW[c], m.width + CELL_PAD_X * 2)
@@ -222,7 +233,13 @@ function measureInline (
   ctx: CanvasRenderingContext2D,
   runs: InlineRun[],
   size: number,
-  opts: { heading?: number; quote?: boolean; startX?: number; bold?: boolean }
+  opts: {
+    heading?: number
+    quote?: boolean
+    startX?: number
+    bold?: boolean
+    family?: string
+  }
 ): { runs: DraftRun[]; width: number } {
   const out: DraftRun[] = []
   let cursor = opts.startX ?? 0
@@ -231,7 +248,8 @@ function measureInline (
       bold: r.style.bold || opts.bold,
       italic: r.style.italic,
       heading: opts.heading !== undefined,
-      mono: r.style.code
+      mono: r.style.code,
+      family: opts.family
     })
     ctx.font = font
     const width = ctx.measureText(r.text).width + (r.style.code ? 6 : 0)
@@ -256,6 +274,7 @@ export function layoutMarkdown (
   options: LayoutOptions = {}
 ): MarkdownLayout {
   const align = options.align ?? 'left'
+  const family = options.fontFamily
   const blocks = parseBlocks(text)
   const lines: DraftLine[] = []
   // Marks code-block line ranges for a unified background.
@@ -276,13 +295,13 @@ export function layoutMarkdown (
       case 'heading': {
         const size = HEADING_SIZE[block.level ?? 1]
         const lh = Math.round(size * 1.25)
-        const { runs, width } = measureInline(ctx, block.runs, size, { heading: block.level })
+        const { runs, width } = measureInline(ctx, block.runs, size, { heading: block.level, family })
         pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: size, quote: false })
         break
       }
       case 'paragraph': {
         const lh = Math.round(BASE_SIZE * BASE_LH)
-        const { runs, width } = measureInline(ctx, block.runs, BASE_SIZE, {})
+        const { runs, width } = measureInline(ctx, block.runs, BASE_SIZE, { family })
         pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: false })
         break
       }
@@ -293,7 +312,8 @@ export function layoutMarkdown (
         const startX = align === 'right' ? 0 : QUOTE_INDENT
         const { runs, width } = measureInline(ctx, block.runs, BASE_SIZE, {
           quote: true,
-          startX
+          startX,
+          family
         })
         const lineWidth = align === 'right' ? width + QUOTE_INDENT : width
         pushLine({ runs, width: lineWidth, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: true })
@@ -306,10 +326,10 @@ export function layoutMarkdown (
         const markerRuns: InlineRun[] = [
           { text: `${block.marker} `, style: { bold: false, italic: false, strike: false, code: false, link: false } }
         ]
-        const marker = measureInline(ctx, markerRuns, BASE_SIZE, { startX: markerStart })
+        const marker = measureInline(ctx, markerRuns, BASE_SIZE, { startX: markerStart, family })
         // Body must start after the marker so wide (multi-digit) markers never overlap it.
         const bodyStart = Math.max(indent, marker.width)
-        const body = measureInline(ctx, block.runs, BASE_SIZE, { startX: bodyStart })
+        const body = measureInline(ctx, block.runs, BASE_SIZE, { startX: bodyStart, family })
         pushLine({
           runs: [...marker.runs, ...body.runs],
           width: Math.max(marker.width, body.width),
@@ -353,7 +373,7 @@ export function layoutMarkdown (
         break
       }
       case 'table': {
-        const table = layoutTable(ctx, block.rows ?? [], block.aligns ?? [])
+        const table = layoutTable(ctx, block.rows ?? [], block.aligns ?? [], family)
         pushLine({
           runs: [],
           width: table.width,

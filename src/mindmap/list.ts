@@ -51,8 +51,8 @@ export function prepareList (adjacency: Adjacency): Map<NodeId, MindNode> {
       id,
       component: id === 0 ? 'root' : 'node',
       editing: value.editing === true,
-      width: value.width || 140,
-      height: value.height || 32,
+      width: value.width || (value.sticky ? 200 : 140),
+      height: value.height || (value.sticky ? 130 : 32),
       isRightSide: from ? isRightSide(from, value) : false,
       isUpSide: from ? isUpSide(from, value) : false,
       isHaveChildren: hasChildren.has(id)

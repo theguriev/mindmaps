@@ -22,6 +22,16 @@ describe('prepareList', () => {
     expect(list.get(0)?.width).toBe(140)
     expect(list.get(0)?.height).toBe(32)
   })
+
+  it('gives sticky notes a larger default size', () => {
+    const adj: Adjacency = new Map<NodeId, RawNode>([
+      [0, { name: 'root', x: 0, y: 0 }],
+      ['s', { name: 'note', x: 0, y: 150, parent: 0, sticky: true }]
+    ])
+    const list = prepareList(adj)
+    expect(list.get('s')?.width).toBe(200)
+    expect(list.get('s')?.height).toBe(130)
+  })
 })
 
 describe('preparePaths', () => {

@@ -75,7 +75,8 @@ export function createEdge (
     strokeWidth: to.strokeWidth ?? 6,
     stroke: to.stroke || 'black',
     lineStyle: to.lineStyle ?? 'solid',
-    lineShape: shape
+    lineShape: shape,
+    sticky: to.sticky === true
   }
 }
 

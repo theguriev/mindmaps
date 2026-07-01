@@ -53,6 +53,8 @@ export interface BoxProps extends InteractiveProps {
   fill?: string
   stroke?: string
   strokeWidth?: number
+  /** Draw a soft drop shadow under the box (e.g. sticky notes). */
+  shadow?: boolean
   /** Draw nothing but still take part in hit-testing (invisible hit area). */
   hitOnly?: boolean
 }

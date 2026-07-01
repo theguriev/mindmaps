@@ -107,6 +107,32 @@ export function useAdjacency (initial: Adjacency) {
     return id
   }
 
+  // Add a sticky note tethered to `parentID` — a yellow card offset below the
+  // parent, connected by a thin dashed grey line (no arrow-heads).
+  const addSticky = (parentID: NodeId): NodeId => {
+    const id = guid()
+    apply((prev) => {
+      const parent = prev.get(parentID)
+      if (!parent) return prev
+      const next = new Map(prev)
+      next.set(id, {
+        name: '',
+        x: parent.x - 20,
+        y: parent.y + 150,
+        parent: parentID,
+        sticky: true,
+        stroke: '#c0c0c0',
+        strokeWidth: 1.5,
+        lineStyle: 'dashed',
+        lineShape: 'straight',
+        width: 200,
+        height: 130
+      })
+      return next
+    }, true)
+    return id
+  }
+
   const remove = (id: NodeId) => {
     apply((prev) => {
       const nodes = withIds(prev)
@@ -237,6 +263,7 @@ export function useAdjacency (initial: Adjacency) {
     list,
     paths,
     add,
+    addSticky,
     remove,
     removeMany,
     update,
