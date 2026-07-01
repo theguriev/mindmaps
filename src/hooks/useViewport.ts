@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from 'react'
-import { isWheelRight, isWheelUp } from '@/utils/wheel'
+import { isWheelUp } from '@/utils/wheel'
 
 export interface ViewportOptions {
   maxZoom?: number
@@ -7,10 +7,18 @@ export interface ViewportOptions {
   minZoom?: number
 }
 
+export interface Bounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
 /**
- * Pan/zoom viewport state. Zoom on ctrl+wheel (anchored at the cursor) and
- * scroll-pan on meta+wheel — the exact arithmetic is ported from the Vue
- * `useZoomWheel` / `usePanScroll` composables.
+ * Pan/zoom viewport state with Figma-style navigation:
+ * - ⌘/Ctrl + wheel (or trackpad pinch) → zoom anchored at the cursor
+ * - plain wheel → pan; Shift + wheel → horizontal pan
+ * - keyboard zoom helpers (zoomIn/Out/To100/ToFit) anchored at the viewport centre
  */
 export function useViewport (
   areaRef: RefObject<HTMLElement | null>,
@@ -39,6 +47,20 @@ export function useViewport (
     setOffsetYState(v)
   }
 
+  const clamp = (s: number) => Math.max(minZoom, Math.min(maxZoom, s))
+
+  // Zoom to `target` scale while keeping the screen point (sx, sy) fixed.
+  const zoomToScale = (target: number, sx: number, sy: number) => {
+    const s = scaleRef.current
+    const next = clamp(target)
+    if (next === s) return
+    const worldX = (sx - oxRef.current) / s
+    const worldY = (sy - oyRef.current) / s
+    setOX(sx - worldX * next)
+    setOY(sy - worldY * next)
+    setScale(next)
+  }
+
   const increase = (cursorX: number, cursorY: number) => {
     const s = scaleRef.current
     const newScale = s + s * zoomStep
@@ -59,14 +81,49 @@ export function useViewport (
     }
   }
 
+  const centre = () => {
+    const rect = areaRef.current?.getBoundingClientRect()
+    return { x: (rect?.width ?? 0) / 2, y: (rect?.height ?? 0) / 2 }
+  }
+
+  const zoomIn = () => {
+    const c = centre()
+    zoomToScale(scaleRef.current * 1.2, c.x, c.y)
+  }
+  const zoomOut = () => {
+    const c = centre()
+    zoomToScale(scaleRef.current / 1.2, c.x, c.y)
+  }
+  const zoomTo100 = () => {
+    const c = centre()
+    zoomToScale(1, c.x, c.y)
+  }
+
+  const zoomToFit = (bounds: Bounds | null) => {
+    const rect = areaRef.current?.getBoundingClientRect()
+    if (!rect || !bounds) return
+    const pad = 80
+    const bw = Math.max(1, bounds.maxX - bounds.minX)
+    const bh = Math.max(1, bounds.maxY - bounds.minY)
+    const s = clamp(
+      Math.min((rect.width - pad * 2) / bw, (rect.height - pad * 2) / bh)
+    )
+    const worldCx = (bounds.minX + bounds.maxX) / 2
+    const worldCy = (bounds.minY + bounds.maxY) / 2
+    setScale(s)
+    setOX(rect.width / 2 - worldCx * s)
+    setOY(rect.height / 2 - worldCy * s)
+  }
+
   const handleWheel = (e: WheelEvent) => {
     const area = areaRef.current
     if (!area) return
     const rect = area.getBoundingClientRect()
-    const cursorX = e.clientX - rect.left
-    const cursorY = e.clientY - rect.top
 
-    if (e.ctrlKey) {
+    // ⌘/Ctrl + wheel (and trackpad pinch, which reports ctrlKey) → zoom at cursor.
+    if (e.metaKey || e.ctrlKey) {
+      const cursorX = e.clientX - rect.left
+      const cursorY = e.clientY - rect.top
       const dir = isWheelUp(e)
       if (dir === 1) increase(cursorX, cursorY)
       else if (dir === -1) decrease(cursorX, cursorY)
@@ -75,17 +132,15 @@ export function useViewport (
       return
     }
 
-    if (!e.ctrlKey && !e.altKey && !e.shiftKey && e.metaKey) {
-      const step = 10
-      const up = isWheelUp(e)
-      const right = isWheelRight(e)
-      if (up === 1) setOY(oyRef.current - step)
-      else if (up === -1) setOY(oyRef.current + step)
-      if (right === 1) setOX(oxRef.current + step)
-      else if (right === -1) setOX(oxRef.current - step)
-      e.preventDefault()
-      e.stopPropagation()
+    // Plain wheel → pan (Figma). Shift maps vertical wheel to horizontal pan.
+    if (e.shiftKey) {
+      setOX(oxRef.current - (e.deltaX || e.deltaY))
+    } else {
+      setOX(oxRef.current - e.deltaX)
+      setOY(oyRef.current - e.deltaY)
     }
+    e.preventDefault()
+    e.stopPropagation()
   }
 
   const panBy = (dx: number, dy: number) => {
@@ -107,6 +162,10 @@ export function useViewport (
     oyRef,
     handleWheel,
     panBy,
-    setOffset
+    setOffset,
+    zoomIn,
+    zoomOut,
+    zoomTo100,
+    zoomToFit
   }
 }

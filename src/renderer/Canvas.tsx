@@ -43,6 +43,8 @@ export interface CanvasProps {
   onBackgroundPointerDown?: (e: PointerPayload) => void
   onPointerMove?: (e: PointerPayload, hit: SceneNode | null) => void
   onWheel?: (e: WheelEvent) => void
+  /** Figma-style pan mode (Space held): any pointer-down pans, elements inert. */
+  panMode?: boolean
 }
 
 const IDENTITY: WorldTransform = { scale: 1, x: 0, y: 0 }
@@ -61,7 +63,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas (
     style,
     onBackgroundPointerDown,
     onPointerMove,
-    onWheel
+    onWheel,
+    panMode = false
   } = props
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -74,6 +77,14 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas (
   sizeRef.current = { width, height, background }
   const transformRef = useRef(worldTransform)
   transformRef.current = worldTransform
+  const panModeRef = useRef(panMode)
+  panModeRef.current = panMode
+
+  // Reflect pan mode on the cursor immediately (before any pointer move).
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current
+    if (canvas) canvas.style.cursor = panMode ? 'grab' : 'default'
+  }, [panMode])
 
   const paint = () => {
     const canvas = canvasRef.current
@@ -226,21 +237,34 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas (
     const onDown = (ev: PointerEvent) => {
       downX = ev.clientX
       downY = ev.clientY
+      // Space held → pan from anywhere, elements inert (Figma).
+      if (panModeRef.current) {
+        canvas.style.cursor = 'grabbing'
+        onBackgroundPointerDown?.(makePayload(ev.clientX, ev.clientY, ev))
+        return
+      }
       // Only elements that actually handle pointer-down suppress background pan.
       // Edges (click-only) let the pan through, matching the original app.
       const handled = dispatch('onPointerDown', ev.clientX, ev.clientY, ev)
       if (!handled) onBackgroundPointerDown?.(makePayload(ev.clientX, ev.clientY, ev))
     }
     const onClickEv = (ev: MouseEvent) => {
+      if (panModeRef.current) return
       if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > CLICK_THRESHOLD) return
       dispatch('onClick', ev.clientX, ev.clientY, ev)
     }
-    const onDbl = (ev: MouseEvent) =>
+    const onDbl = (ev: MouseEvent) => {
+      if (panModeRef.current) return
       dispatch('onDoubleClick', ev.clientX, ev.clientY, ev)
+    }
 
     const onMove = (ev: PointerEvent) => {
       const scene = sceneRef.current
       if (!scene) return
+      if (panModeRef.current) {
+        canvas.style.cursor = ev.buttons ? 'grabbing' : 'grab'
+        return
+      }
       const rect = canvas.getBoundingClientRect()
       const hit = hitTest(scene.getRoot(), ev.clientX - rect.left, ev.clientY - rect.top)
       const cursor = (hit?.node.props as GroupProps | undefined)?.cursor

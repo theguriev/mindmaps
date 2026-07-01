@@ -95,8 +95,10 @@ function discToSvg (p: DiscProps): string {
 }
 
 function bezierToSvg (p: BezierProps): string {
+  const w = p.strokeWidth ?? 1
   const d = `M ${n(p.x1)} ${n(p.y1)} C ${n(p.cx1)} ${n(p.cy1)} ${n(p.cx2)} ${n(p.cy2)} ${n(p.x2)} ${n(p.y2)}`
-  return `<path d="${d}" fill="none" stroke="${p.stroke ?? '#000'}" stroke-width="${p.strokeWidth ?? 1}" stroke-linecap="round"/>`
+  const dash = p.dash ? ` stroke-dasharray="${n(w * 1.6)} ${n(w * 1.6)}"` : ''
+  return `<path d="${d}" fill="none" stroke="${p.stroke ?? '#000'}" stroke-width="${w}" stroke-linecap="${p.dash ? 'butt' : 'round'}"${dash}/>`
 }
 
 function triangleToSvg (p: TriangleProps): string {

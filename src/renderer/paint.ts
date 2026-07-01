@@ -102,13 +102,16 @@ function paintDisc (ctx: CanvasRenderingContext2D, p: DiscProps): void {
 }
 
 function paintBezier (ctx: CanvasRenderingContext2D, p: BezierProps): void {
+  const width = p.strokeWidth ?? 1
   ctx.beginPath()
   ctx.moveTo(p.x1, p.y1)
   ctx.bezierCurveTo(p.cx1, p.cy1, p.cx2, p.cy2, p.x2, p.y2)
   ctx.strokeStyle = p.stroke ?? '#000'
-  ctx.lineWidth = p.strokeWidth ?? 1
-  ctx.lineCap = 'round'
+  ctx.lineWidth = width
+  ctx.lineCap = p.dash ? 'butt' : 'round'
+  ctx.setLineDash(p.dash ? [width * 1.6, width * 1.6] : [])
   ctx.stroke()
+  ctx.setLineDash([])
 }
 
 function paintTriangle (ctx: CanvasRenderingContext2D, p: TriangleProps): void {

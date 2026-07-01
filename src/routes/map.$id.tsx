@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MindMapScene } from '@/components/MindMapScene'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
-import { ColorWheel } from '@/components/ColorWheel'
+import { EdgeEditor } from '@/components/EdgeEditor'
 import { ModalShortcuts } from '@/components/ModalShortcuts'
 import { Toolbar } from '@/components/Toolbar'
 import { FooterLogo } from '@/components/FooterLogo'
@@ -97,6 +97,7 @@ function Editor ({ id }: { id: string }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [spacePan, setSpacePan] = useState(false)
 
   const dragRef = useRef<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
@@ -222,27 +223,83 @@ function Editor ({ id }: { id: string }) {
     })
   }
 
-  // ---- Keyboard ----
+  // World-space bounding box of all nodes (for zoom-to-fit).
+  const contentBounds = () => {
+    const nodes = Array.from(list.values())
+    if (nodes.length === 0) return null
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x)
+      minY = Math.min(minY, n.y)
+      maxX = Math.max(maxX, n.x)
+      maxY = Math.max(maxY, n.y)
+    }
+    return { minX, minY, maxX, maxY }
+  }
+
+  // ---- Keyboard (Figma-style) ----
   useEvent<KeyboardEvent>('keydown', (event) => {
     if (event.metaKey) setMetaPressing(true)
+    const editing = editingNode !== null
 
-    if (event.ctrlKey && event.altKey && event.code === 'KeyH') {
-      setShortcutsOpen(true)
-    } else if (event.ctrlKey && event.altKey && event.code === 'KeyJ') {
-      saveJpeg()
-    } else if (event.ctrlKey && event.altKey && event.code === 'KeyP') {
-      savePng()
-    } else if (event.ctrlKey && event.altKey && event.code === 'KeyS') {
-      saveSvg()
-    } else if (event.ctrlKey && event.code === 'KeyS') {
+    // Space (held) → Figma-style pan mode (drag anywhere to pan).
+    if (event.code === 'Space' && !editing) {
+      const el = event.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'BUTTON' && !el?.isContentEditable) {
+        setSpacePan(true)
+        event.preventDefault()
+        return
+      }
+    }
+
+    // ⌘S — save
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyS') {
       event.preventDefault()
       save()
-    } else if (event.altKey && event.code === 'Enter') {
-      closeEditingIfAny()
+      return
+    }
+    // ⌘⇧E — export (PNG)
+    if (event.metaKey && event.shiftKey && event.code === 'KeyE') {
+      event.preventDefault()
+      savePng()
+      return
+    }
+    // ⌃⇧? — keyboard shortcuts panel
+    if (event.ctrlKey && event.shiftKey && event.code === 'Slash') {
+      event.preventDefault()
+      setShortcutsOpen(true)
+      return
+    }
+    // Esc — exit editing
+    if (event.code === 'Escape') {
+      if (editing) closeEditingIfAny()
+      return
+    }
+    // Navigation — only when not typing and without ⌘/Ctrl/Alt (so ⌘± page zoom
+    // still works and typing +/-/0/1 in the editor is unaffected).
+    if (!editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault()
+        viewport.zoomIn()
+      } else if (event.key === '-' || event.key === '_') {
+        event.preventDefault()
+        viewport.zoomOut()
+      } else if (event.shiftKey && event.code === 'Digit0') {
+        event.preventDefault()
+        viewport.zoomTo100()
+      } else if (event.shiftKey && event.code === 'Digit1') {
+        event.preventDefault()
+        viewport.zoomToFit(contentBounds())
+      }
     }
   })
   useEvent<KeyboardEvent>('keyup', (event) => {
     if (!event.metaKey) setMetaPressing(false)
+    if (event.code === 'Space') setSpacePan(false)
   })
 
   const rootNode = adjacency.get(0)
@@ -269,31 +326,27 @@ function Editor ({ id }: { id: string }) {
         }
         right={
           <>
-            <Button variant="ghost" size="icon" title="Save ^S" onClick={save}>
+            <Button variant="ghost" size="icon" title="Save  ⌘S" onClick={save}>
               <SaveIcon />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" title="Download">
+                <Button variant="ghost" size="icon" title="Export  ⌘⇧E">
                   <DownloadIcon />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={saveJpeg}>
-                  JPEG <span className="ml-auto text-muted-foreground">^⌥J</span>
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={saveJpeg}>JPEG</DropdownMenuItem>
                 <DropdownMenuItem onClick={savePng}>
-                  PNG <span className="ml-auto text-muted-foreground">^⌥P</span>
+                  PNG <span className="ml-auto text-muted-foreground">⌘⇧E</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={saveSvg}>
-                  SVG <span className="ml-auto text-muted-foreground">^⌥S</span>
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button
               variant="ghost"
               size="icon"
-              title="Keyboard shortcuts ^⌥H"
+              title="Keyboard shortcuts  ⌃⇧?"
               onClick={() => setShortcutsOpen(true)}
             >
               <KeyboardIcon />
@@ -311,6 +364,7 @@ function Editor ({ id }: { id: string }) {
           width={width}
           height={height}
           worldTransform={{ scale: viewport.scale, x: viewport.offsetX, y: viewport.offsetY }}
+          panMode={spacePan}
           onBackgroundPointerDown={onBackgroundPointerDown}
           onPointerMove={onCanvasPointerMove}
           onWheel={viewport.handleWheel}
@@ -343,13 +397,19 @@ function Editor ({ id }: { id: string }) {
         <FooterLogo />
       </div>
       {color.visible && (
-        <ColorWheel
+        <EdgeEditor
           x={color.x}
           y={color.y}
-          onPick={(stroke) => {
-            updateBranch(color.visible!.fromID, { stroke })
-            closeColor()
-          }}
+          current={(() => {
+            const n = list.get(color.visible!.fromID)
+            return {
+              stroke: n?.stroke,
+              strokeWidth: n?.strokeWidth,
+              lineStyle: n?.lineStyle,
+              lineShape: n?.lineShape
+            }
+          })()}
+          onPick={(patch) => updateBranch(color.visible!.fromID, patch)}
         />
       )}
     </div>

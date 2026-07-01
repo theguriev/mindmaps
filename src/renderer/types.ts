@@ -77,6 +77,8 @@ export interface BezierProps extends InteractiveProps {
   y2: number
   stroke?: string
   strokeWidth?: number
+  /** Render as a dashed line. */
+  dash?: boolean
   /** Extra world-space radius added to the stroke for easier clicking. */
   hitPadding?: number
 }

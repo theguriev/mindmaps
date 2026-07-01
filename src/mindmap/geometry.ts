@@ -52,7 +52,12 @@ export function createEdge (
 ): PathEdge {
   const newId = `${id}-${to.id}`
   const right = isRightSide(from, to)
-  const points23 = pathsCalculations(right, from, to)
+  const shape = to.lineShape ?? 'smooth'
+  // Smooth → S-curve control points; straight → collapse the cubic to a line.
+  const points23 =
+    shape === 'straight'
+      ? { x2: from.x, y2: from.y, x3: to.x, y3: to.y }
+      : pathsCalculations(right, from, to)
 
   return {
     id: newId,
@@ -67,8 +72,10 @@ export function createEdge (
     x4: to.x,
     y4: to.y,
     isRightSide: right,
-    strokeWidth: 6,
-    stroke: to.stroke || 'black'
+    strokeWidth: to.strokeWidth ?? 6,
+    stroke: to.stroke || 'black',
+    lineStyle: to.lineStyle ?? 'solid',
+    lineShape: shape
   }
 }
 

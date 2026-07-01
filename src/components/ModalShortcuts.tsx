@@ -45,27 +45,39 @@ export function ModalShortcuts ({
     <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[80vh] overflow-auto">
         <DialogHeader>
-          <DialogTitle>Keyboard shortcuts ^⌥H</DialogTitle>
+          <DialogTitle>Keyboard shortcuts ⌃⇧?</DialogTitle>
         </DialogHeader>
 
         <div className="text-sm">
           <Section title="Global" />
-          <Row label="Save" keys={['^', 'S']} />
-          <Row label="Close editing" keys={['⌥', 'Enter']} />
-          <Row label="Keyboard shortcuts" keys={['^', '⌥', 'H']} />
+          <Row label="Save" keys={['⌘', 'S']} />
+          <Row label="Export PNG" keys={['⌘', '⇧', 'E']} />
+          <Row label="Exit editing" keys={['Esc']} />
+          <Row label="Keyboard shortcuts" keys={['⌃', '⇧', '?']} />
 
-          <Section title="Zoom" />
-          <Row label="Zoom in" keys={['^', 'Wheel up']} />
-          <Row label="Zoom out" keys={['^', 'Wheel down']} />
+          <Section title="Zoom & Pan" />
+          <Row label="Zoom in / out" keys={['+', '−']} />
+          <Row label="Zoom to 100%" keys={['⇧', '0']} />
+          <Row label="Zoom to fit" keys={['⇧', '1']} />
+          <Row label="Zoom" keys={['⌘', 'Scroll']} />
+          <Row label="Pan" keys={['Scroll']} />
+          <Row label="Pan horizontally" keys={['⇧', 'Scroll']} />
+          <Row label="Pan (hold)" keys={['Space', 'Drag']} />
+          <Row label="Pan" keys={['Drag empty area']} />
 
           <Section title="Branch controls" />
-          <Row label="Remove branch" keys={['⌘', 'Click ( on plus button )']} />
+          <Row label="Add child" keys={['Click', '⊕']} />
+          <Row label="Remove branch" keys={['⌘', 'Click', '⊕']} />
 
-          <Section title="Pan" />
-          <Row label="Pan up" keys={['⌘', 'Wheel up']} />
-          <Row label="Pan down" keys={['⌘', 'Wheel down']} />
-          <Row label="Pan left" keys={['⌘', 'Wheel left']} />
-          <Row label="Pan right" keys={['⌘', 'Wheel right']} />
+          <Section title="Text formatting" />
+          <Row label="Bold" keys={['⌘', 'B']} />
+          <Row label="Italic" keys={['⌘', 'I']} />
+          <Row label="Strikethrough" keys={['⌘', '⇧', 'X']} />
+          <Row label="Code" keys={['⌘', '⇧', 'C']} />
+          <Row label="Link" keys={['⌘', '⇧', 'U']} />
+          <Row label="Ordered list" keys={['⌘', '⇧', '7']} />
+          <Row label="Bulleted list" keys={['⌘', '⇧', '8']} />
+          <Row label="Blockquote" keys={['⌘', '⇧', '9']} />
         </div>
       </DialogContent>
     </Dialog>

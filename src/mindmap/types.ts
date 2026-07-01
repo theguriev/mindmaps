@@ -2,6 +2,9 @@
 
 export type NodeId = string | number
 
+export type LineStyle = 'solid' | 'dashed'
+export type LineShape = 'straight' | 'smooth'
+
 /** A raw stored node (as persisted in localStorage `content` entries). */
 export interface RawNode {
   id?: NodeId
@@ -9,7 +12,11 @@ export interface RawNode {
   x: number
   y: number
   parent?: NodeId
+  /** Branch appearance (applied to the edge coming into this node). */
   stroke?: string
+  strokeWidth?: number
+  lineStyle?: LineStyle
+  lineShape?: LineShape
   width?: number
   height?: number
   editing?: boolean
@@ -46,6 +53,8 @@ export interface PathEdge {
   isRightSide: boolean
   strokeWidth: number
   stroke: string
+  lineStyle: LineStyle
+  lineShape: LineShape
 }
 
 export type Adjacency = Map<NodeId, RawNode>

@@ -22,6 +22,7 @@ export function EdgeScene ({
         y2={edge.y4}
         stroke={edge.stroke}
         strokeWidth={edge.strokeWidth}
+        dash={edge.lineStyle === 'dashed'}
         hitPadding={5}
         cursor="pointer"
         onClick={(e) => onColor(edge, e)}
