@@ -19,10 +19,16 @@ import { getMap, saveMap } from '@/api/maps'
 import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import {
   ArrowLeftIcon,
+  CommandIcon,
   DownloadIcon,
-  KeyboardIcon,
+  MaximizeIcon,
+  PlusIcon,
+  Redo2Icon,
   SaveIcon,
-  StickyNoteIcon
+  StickyNoteIcon,
+  Undo2Icon,
+  ZoomInIcon,
+  ZoomOutIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -35,10 +41,10 @@ import {
 import { MindMapScene } from '@/components/MindMapScene'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { EdgeEditor } from '@/components/EdgeEditor'
-import { ModalShortcuts } from '@/components/ModalShortcuts'
 import { Toolbar } from '@/components/Toolbar'
 import { CanvasControls } from '@/components/CanvasControls'
 import { CreateToolbar } from '@/components/CreateToolbar'
+import { CommandMenu, type MenuCommand } from '@/components/CommandMenu'
 
 export const Route = createFileRoute('/map/$id')({
   component: MapRoute
@@ -181,7 +187,7 @@ function Editor ({ id }: { id: string }) {
   const { color, pathClick, close: closeColor } = useColor()
   const { savePng, saveJpeg, saveSvg } = useDownload(canvasRef, { width, height })
 
-  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
@@ -503,10 +509,10 @@ function Editor ({ id }: { id: string }) {
       setSelectedIds(new Set(list.keys()))
       return
     }
-    // ⌃⇧? — keyboard shortcuts panel
-    if (event.ctrlKey && event.shiftKey && event.code === 'Slash') {
+    // ⌘K — command menu
+    if (event.metaKey && event.code === 'KeyK') {
       event.preventDefault()
-      setShortcutsOpen(true)
+      setCommandOpen((open) => !open)
       return
     }
     // Esc — exit editing, else clear the selection
@@ -607,9 +613,25 @@ function Editor ({ id }: { id: string }) {
 
   const rootNode = adjacency.get(0)
 
+  const commands: MenuCommand[] = [
+    { group: 'Create', label: 'Add root node', icon: PlusIcon, run: onAddRoot },
+    { group: 'Create', label: 'Add sticky note', icon: StickyNoteIcon, run: onAddSticky },
+    { group: 'View', label: 'Zoom in', shortcut: '+', icon: ZoomInIcon, run: viewport.zoomIn },
+    { group: 'View', label: 'Zoom out', shortcut: '−', icon: ZoomOutIcon, run: viewport.zoomOut },
+    { group: 'View', label: 'Zoom to 100%', shortcut: '⇧0', run: viewport.zoomTo100 },
+    { group: 'View', label: 'Zoom to fit', shortcut: '⇧1', icon: MaximizeIcon, run: () => viewport.zoomToFit(contentBounds()) },
+    { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
+    { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
+    { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save },
+    { group: 'File', label: 'Export PNG', shortcut: '⌘⇧E', icon: DownloadIcon, run: savePng },
+    { group: 'File', label: 'Export JPEG', icon: DownloadIcon, run: saveJpeg },
+    { group: 'File', label: 'Export SVG', icon: DownloadIcon, run: saveSvg },
+    { group: 'Go', label: 'Back to maps', icon: ArrowLeftIcon, run: () => navigate({ to: '/' }) }
+  ]
+
   return (
     <div className="absolute inset-0">
-      <ModalShortcuts visible={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
       <Toolbar
         left={
           <>
@@ -658,10 +680,10 @@ function Editor ({ id }: { id: string }) {
             <Button
               variant="ghost"
               size="icon"
-              title="Keyboard shortcuts  ⌃⇧?"
-              onClick={() => setShortcutsOpen(true)}
+              title="Command menu  ⌘K"
+              onClick={() => setCommandOpen(true)}
             >
-              <KeyboardIcon />
+              <CommandIcon />
             </Button>
           </>
         }
