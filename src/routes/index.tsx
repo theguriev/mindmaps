@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,11 +28,11 @@ function center () {
 
 function Home () {
   const navigate = useNavigate()
-  const [maps, setMaps] = useState<MapDoc[]>([])
+  // Load synchronously from localStorage on first render (no mount effect).
+  const [maps, setMaps] = useState<MapDoc[]>(() => allMaps())
   const [filterText, setFilterText] = useState('')
 
   const reload = () => setMaps(allMaps())
-  useEffect(reload, [])
 
   const filteredMaps = maps.filter(
     (el) =>

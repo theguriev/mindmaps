@@ -286,7 +286,6 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas (
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('wheel', onWheelEv)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onBackgroundPointerDown, onPointerMove, onWheel])
 
   return (

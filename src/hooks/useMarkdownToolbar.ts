@@ -72,8 +72,18 @@ export function useMarkdownToolbar (
   const bulletedList = () => textareaLists((line) => `* ${line}`, 2)
   const blockquote = () => textareaLists((line) => `> ${line}`, 2)
 
+  // Restore the selection recorded by the last action, after the controlled
+  // re-render applied the new value. Owns the ref mutation (kept inside the hook).
+  const restoreSelection = (el: HTMLTextAreaElement | null) => {
+    if (el && pendingSel.current) {
+      el.focus()
+      el.setSelectionRange(pendingSel.current.start, pendingSel.current.end)
+      pendingSel.current = null
+    }
+  }
+
   return {
-    pendingSel,
+    restoreSelection,
     bold,
     italic,
     strikethrough,

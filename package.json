@@ -13,7 +13,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.18",
@@ -33,9 +36,15 @@
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
+    "@eslint/js": "^10.0.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tailwindcss/vite": "^4.3.2",
     "@tanstack/router-plugin": "^1.168.18",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.9",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.17",

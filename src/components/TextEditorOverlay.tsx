@@ -25,18 +25,11 @@ export function TextEditorOverlay ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const toolbar = useMarkdownToolbar(textareaRef, onInput)
 
-  // Restore selection after a formatting action re-renders the value.
+  // Restore selection after a formatting action re-renders the value (no-op
+  // unless an action queued a selection).
   useLayoutEffect(() => {
-    const ta = textareaRef.current
-    if (ta && toolbar.pendingSel.current) {
-      ta.focus()
-      ta.setSelectionRange(
-        toolbar.pendingSel.current.start,
-        toolbar.pendingSel.current.end
-      )
-      toolbar.pendingSel.current = null
-    }
-  }, [node.name, toolbar.pendingSel])
+    toolbar.restoreSelection(textareaRef.current)
+  })
 
   // Focus on open.
   useEffect(() => {
