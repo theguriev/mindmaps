@@ -25,6 +25,10 @@ export function EdgeScene ({
         dash={edge.lineStyle === 'dashed'}
         hitPadding={5}
         cursor="pointer"
+        // Consume the press so an edge click doesn't fall through to the
+        // background (which would start a marquee and clear the selection).
+        // The colour wheel still opens on the click below.
+        onPointerDown={() => {}}
         onClick={(e) => onColor(edge, e)}
       />
       <triangle

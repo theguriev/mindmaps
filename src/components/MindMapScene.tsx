@@ -14,14 +14,14 @@ export function MindMapScene ({
   offsetX,
   offsetY,
   hoveredId,
-  selectedId,
+  selectedIds,
+  marquee,
   metaPressing,
   onColor,
   onDragStart,
   onEdit,
   onAdd,
-  onRemove,
-  onSelect
+  onRemove
 }: {
   list: Map<NodeId, MindNode>
   paths: Map<string, PathEdge>
@@ -29,14 +29,14 @@ export function MindMapScene ({
   offsetX: number
   offsetY: number
   hoveredId: string | null
-  selectedId: NodeId | null
+  selectedIds: Set<NodeId>
+  marquee: { x: number; y: number; w: number; h: number } | null
   metaPressing: boolean
   onColor: (edge: PathEdge, e: PointerPayload) => void
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
-  onSelect: (node: MindNode) => void
 }) {
   return (
     <group x={offsetX} y={offsetY} scale={scale}>
@@ -48,15 +48,25 @@ export function MindMapScene ({
           key={String(node.id)}
           node={node}
           hovered={hoveredId === String(node.id)}
-          selected={selectedId === node.id}
+          selected={selectedIds.has(node.id)}
           metaPressing={metaPressing}
           onDragStart={onDragStart}
           onEdit={onEdit}
           onAdd={onAdd}
           onRemove={onRemove}
-          onSelect={onSelect}
         />
       ))}
+      {marquee && (
+        <box
+          x={marquee.x}
+          y={marquee.y}
+          width={marquee.w}
+          height={marquee.h}
+          fill="rgba(64, 158, 255, 0.08)"
+          stroke="#409eff"
+          strokeWidth={1}
+        />
+      )}
     </group>
   )
 }

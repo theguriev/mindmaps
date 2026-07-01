@@ -45,9 +45,9 @@ const ADD_OFFSET = new Map<number, number>([
 ])
 
 interface DragState {
-  node: MindNode
-  offsetX: number
-  offsetY: number
+  ids: NodeId[]
+  lastX: number
+  lastY: number
 }
 interface PanState {
   startClientX: number
@@ -61,6 +61,50 @@ interface ResizeState {
   startH: number
   startClientX: number
   startClientY: number
+}
+interface MarqueeState {
+  startX: number
+  startY: number
+  moved: boolean
+  additive: boolean
+  base: Set<NodeId>
+}
+
+/** Selection "roots": selected ids none of whose ancestors are also selected —
+ *  so moving/deleting each branch never double-processes a shared node. */
+function selectionRoots (
+  list: Map<NodeId, MindNode>,
+  selected: Set<NodeId>
+): NodeId[] {
+  const roots: NodeId[] = []
+  for (const id of selected) {
+    let p = list.get(id)?.parent
+    let ancestorSelected = false
+    while (p !== undefined) {
+      if (selected.has(p)) {
+        ancestorSelected = true
+        break
+      }
+      p = list.get(p)?.parent
+    }
+    if (!ancestorSelected) roots.push(id)
+  }
+  return roots
+}
+
+/** Ids of nodes whose point falls inside a world-space rectangle. */
+function nodesInRect (
+  list: Map<NodeId, MindNode>,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): NodeId[] {
+  const ids: NodeId[] = []
+  for (const n of list.values()) {
+    if (n.x >= x && n.x <= x + w && n.y >= y && n.y <= y + h) ids.push(n.id)
+  }
+  return ids
 }
 
 /** Move the selection with the arrow keys: ←parent, →first child, ↑/↓ siblings. */
@@ -105,9 +149,10 @@ function Editor ({ id }: { id: string }) {
     paths,
     add,
     remove,
+    removeMany,
     update,
-    updatePosition,
     updateBranch,
+    moveBranchesBy,
     setEditing,
     pushSnapshot,
     undo,
@@ -122,27 +167,32 @@ function Editor ({ id }: { id: string }) {
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
-  const [selectedId, setSelectedId] = useState<NodeId | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<NodeId>>(new Set())
+  const [marquee, setMarquee] = useState<
+    { x: number; y: number; w: number; h: number } | null
+  >(null)
+
+  // The "active" node — target for Tab / Enter / arrow keys when several are
+  // selected. Sets preserve insertion order, so it's the last one added.
+  const activeId =
+    selectedIds.size > 0 ? Array.from(selectedIds)[selectedIds.size - 1] : null
 
   const dragRef = useRef<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
   const resizeRef = useRef<ResizeState | null>(null)
-  // Pre-gesture snapshots so a whole drag/resize/edit collapses to one undo
-  // step. `moveSnapRef` covers drag & resize (cleared on mouse-up); `editSnapRef`
-  // covers a typing session (cleared when editing closes).
+  const marqueeRef = useRef<MarqueeState | null>(null)
+  // A whole drag/resize collapses to one undo step: `moveSnapRef` holds the
+  // pre-gesture state, pushed on the first movement and cleared on mouse-up.
   const moveSnapRef = useRef<Adjacency | null>(null)
-  const editSnapRef = useRef<Adjacency | null>(null)
+  // A typing session is one undo step too, but snapshotted *lazily* on the first
+  // keystroke (so it captures the current geometry even if the node was resized
+  // mid-edit). `true` = the session's snapshot has already been taken.
+  const editDirtyRef = useRef(false)
 
   const recordMove = () => {
     if (moveSnapRef.current) {
       pushSnapshot(moveSnapRef.current)
       moveSnapRef.current = null
-    }
-  }
-  const recordEdit = () => {
-    if (editSnapRef.current) {
-      pushSnapshot(editSnapRef.current)
-      editSnapRef.current = null
     }
   }
 
@@ -153,7 +203,7 @@ function Editor ({ id }: { id: string }) {
   }, [doc, navigate])
 
   const closeEditingIfAny = () => {
-    editSnapRef.current = null
+    editDirtyRef.current = false
     if (editingNode) setEditing(null)
   }
 
@@ -166,19 +216,33 @@ function Editor ({ id }: { id: string }) {
 
   const onDragStart = (node: MindNode, e: PointerPayload) => {
     closeEditingIfAny()
-    setSelectedId(node.id)
+    // Shift-click toggles a node in/out of the selection (no drag).
+    if (e.originalEvent.shiftKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(node.id)) next.delete(node.id)
+        else next.add(node.id)
+        return next
+      })
+      return
+    }
+    // Plain press: if the node isn't part of the selection, select just it.
+    // Then drag whatever is selected (each branch moves together).
+    let sel = selectedIds
+    if (!selectedIds.has(node.id)) {
+      sel = new Set([node.id])
+      setSelectedIds(sel)
+    }
     moveSnapRef.current = adjacency
     dragRef.current = {
-      node,
-      offsetX: e.worldX - node.x,
-      offsetY: e.worldY - node.y
+      ids: selectionRoots(list, sel),
+      lastX: e.worldX,
+      lastY: e.worldY
     }
   }
 
-  const onSelect = (node: MindNode) => setSelectedId(node.id)
-
   const onEdit = (node: MindNode) => {
-    editSnapRef.current = adjacency
+    editDirtyRef.current = false
     setEditing(node.id)
   }
 
@@ -194,12 +258,22 @@ function Editor ({ id }: { id: string }) {
 
   const onBackgroundPointerDown = (e: PointerPayload) => {
     closeEditingIfAny()
-    setSelectedId(null)
-    panRef.current = {
-      startClientX: e.originalEvent.clientX,
-      startClientY: e.originalEvent.clientY,
-      baseX: viewport.oxRef.current,
-      baseY: viewport.oyRef.current
+    // Space held → pan the canvas (Figma). Otherwise drag a selection marquee.
+    if (spacePan) {
+      panRef.current = {
+        startClientX: e.originalEvent.clientX,
+        startClientY: e.originalEvent.clientY,
+        baseX: viewport.oxRef.current,
+        baseY: viewport.oyRef.current
+      }
+      return
+    }
+    marqueeRef.current = {
+      startX: e.worldX,
+      startY: e.worldY,
+      moved: false,
+      additive: e.originalEvent.shiftKey,
+      base: e.originalEvent.shiftKey ? new Set(selectedIds) : new Set()
     }
   }
 
@@ -214,9 +288,32 @@ function Editor ({ id }: { id: string }) {
       const handle = canvasRef.current
       if (!handle) return
       const world = handle.screenToWorld(event.clientX, event.clientY)
-      const { node, offsetX, offsetY } = dragRef.current
-      recordMove()
-      updatePosition({ ...node, x: world.x - offsetX, y: world.y - offsetY })
+      const drag = dragRef.current
+      const dx = world.x - drag.lastX
+      const dy = world.y - drag.lastY
+      if (dx !== 0 || dy !== 0) {
+        recordMove()
+        moveBranchesBy(drag.ids, dx, dy)
+        drag.lastX = world.x
+        drag.lastY = world.y
+      }
+      return
+    }
+    if (marqueeRef.current) {
+      const handle = canvasRef.current
+      if (!handle) return
+      const m = marqueeRef.current
+      const world = handle.screenToWorld(event.clientX, event.clientY)
+      m.moved = true
+      const x = Math.min(m.startX, world.x)
+      const y = Math.min(m.startY, world.y)
+      const w = Math.abs(world.x - m.startX)
+      const h = Math.abs(world.y - m.startY)
+      setMarquee({ x, y, w, h })
+      const inside = nodesInRect(list, x, y, w, h)
+      const next = new Set(m.base)
+      for (const id of inside) next.add(id)
+      setSelectedIds(next)
       return
     }
     if (panRef.current) {
@@ -244,6 +341,14 @@ function Editor ({ id }: { id: string }) {
     panRef.current = null
     resizeRef.current = null
     moveSnapRef.current = null
+    if (marqueeRef.current) {
+      // A background click that never dragged clears the selection.
+      if (!marqueeRef.current.moved && !marqueeRef.current.additive) {
+        setSelectedIds(new Set())
+      }
+      marqueeRef.current = null
+      setMarquee(null)
+    }
   }
 
   useEvent('mouseup', endInteractions)
@@ -331,47 +436,60 @@ function Editor ({ id }: { id: string }) {
       else undo()
       return
     }
+    // ⌘A — select every node
+    if (event.metaKey && event.code === 'KeyA' && !editing) {
+      event.preventDefault()
+      setSelectedIds(new Set(list.keys()))
+      return
+    }
     // ⌃⇧? — keyboard shortcuts panel
     if (event.ctrlKey && event.shiftKey && event.code === 'Slash') {
       event.preventDefault()
       setShortcutsOpen(true)
       return
     }
-    // Esc — exit editing
+    // Esc — exit editing, else clear the selection
     if (event.code === 'Escape') {
       if (editing) closeEditingIfAny()
+      else setSelectedIds(new Set())
       return
     }
-    // Node operations — require a selection, not while typing, no ⌘/Ctrl/Alt.
+    // Node operations — act on the active node, not while typing, no ⌘/Ctrl/Alt.
     if (!editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      // Delete / Backspace — remove the selected node (never the root).
+      // Delete / Backspace — remove every selected node (never the root).
+      // Drop the root first so it can't mask its (deletable) descendants.
       if (event.code === 'Delete' || event.code === 'Backspace') {
-        if (selectedId != null && selectedId !== 0) {
+        const deletable = new Set(selectedIds)
+        deletable.delete(0)
+        const roots = selectionRoots(list, deletable)
+        if (roots.length > 0) {
           event.preventDefault()
-          remove(selectedId)
-          setSelectedId(null)
+          removeMany(roots)
+          setSelectedIds(new Set())
         }
         return
       }
-      // Tab — add a child to the selection and start editing it.
+      // Tab — add a child to the active node and start editing it.
       if (event.code === 'Tab') {
         event.preventDefault()
-        if (selectedId != null) {
-          const n = list.get(selectedId)
+        if (activeId != null) {
+          const n = list.get(activeId)
           if (n) {
             const offset = n.component === 'root' ? 0 : (ADD_OFFSET.get(clockIndex(n)) ?? 0)
-            const newId = add(selectedId, offset)
-            setSelectedId(newId)
+            const newId = add(activeId, offset)
+            setSelectedIds(new Set([newId]))
             setEditing(newId)
+            // The `add` already recorded a step; fold the initial typing into it.
+            editDirtyRef.current = true
           }
         }
         return
       }
-      // Enter — add a sibling (a child of the selection's parent) and edit it.
+      // Enter — add a sibling (a child of the active node's parent) and edit it.
       if (event.code === 'Enter' && !event.shiftKey) {
         event.preventDefault()
-        if (selectedId != null) {
-          const n = list.get(selectedId)
+        if (activeId != null) {
+          const n = list.get(activeId)
           if (n) {
             const parentId = n.parent
             let newId: NodeId
@@ -386,17 +504,19 @@ function Editor ({ id }: { id: string }) {
               // Root has no parent — Enter adds a child instead.
               newId = add(n.id, 0)
             }
-            setSelectedId(newId)
+            setSelectedIds(new Set([newId]))
             setEditing(newId)
+            // The `add` already recorded a step; fold the initial typing into it.
+            editDirtyRef.current = true
           }
         }
         return
       }
-      // Arrows — move the selection through the tree.
-      if (event.key.startsWith('Arrow') && selectedId != null) {
+      // Arrows — move the (single) active selection through the tree.
+      if (event.key.startsWith('Arrow') && activeId != null) {
         event.preventDefault()
-        const next = navigateSelection(list, selectedId, event.key)
-        if (next != null) setSelectedId(next)
+        const next = navigateSelection(list, activeId, event.key)
+        if (next != null) setSelectedIds(new Set([next]))
         return
       }
     }
@@ -498,14 +618,14 @@ function Editor ({ id }: { id: string }) {
             offsetX={viewport.offsetX}
             offsetY={viewport.offsetY}
             hoveredId={hoveredId}
-            selectedId={selectedId}
+            selectedIds={selectedIds}
+            marquee={marquee}
             metaPressing={metaPressing}
             onColor={onColor}
             onDragStart={onDragStart}
             onEdit={onEdit}
             onAdd={onAdd}
             onRemove={onRemove}
-            onSelect={onSelect}
           />
         </Canvas>
         {editingNode && (
@@ -515,7 +635,11 @@ function Editor ({ id }: { id: string }) {
             top={editingNode.y * viewport.scale + viewport.offsetY}
             scale={viewport.scale}
             onInput={(value) => {
-              recordEdit()
+              // Snapshot the pre-typing state once, at the first keystroke.
+              if (!editDirtyRef.current) {
+                pushSnapshot(adjacency)
+                editDirtyRef.current = true
+              }
               update({ ...editingNode, name: value })
             }}
             onStartResize={onStartResize}

@@ -37,7 +37,6 @@ export interface NodeSceneProps {
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
-  onSelect: (node: MindNode) => void
 }
 
 export function NodeScene ({
@@ -48,8 +47,7 @@ export function NodeScene ({
   onDragStart,
   onEdit,
   onAdd,
-  onRemove,
-  onSelect
+  onRemove
 }: NodeSceneProps) {
   const isRoot = node.component === 'root'
   const isPlaceholder = node.name === ''
@@ -95,7 +93,6 @@ export function NodeScene ({
           cursor="move"
           hitId={String(node.id)}
           onPointerDown={(e) => onDragStart(node, e)}
-          onClick={() => onSelect(node)}
           onDoubleClick={() => onEdit(node)}
         />
         <markdown
@@ -142,7 +139,6 @@ export function NodeScene ({
         cursor="move"
         hitId={String(node.id)}
         onPointerDown={(e) => onDragStart(node, e)}
-        onClick={() => onSelect(node)}
         onDoubleClick={() => onEdit(node)}
       />
       <markdown x={tx} y={ty} layout={layout} opacity={opacity} />

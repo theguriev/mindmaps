@@ -42,6 +42,23 @@ function withIds (map: Adjacency): Array<RawNode & { id: NodeId }> {
   }))
 }
 
+/** `editing` is transient UI state — a snapshot stored in the undo/redo stacks
+ *  must not carry it, or undo would silently re-open the text editor (which in
+ *  turn disables the ⌘Z/⌘⇧Z shortcuts). Returns the same map when nothing set. */
+function withoutEditing (map: Adjacency): Adjacency {
+  let dirty = false
+  const next = new Map<NodeId, RawNode>()
+  for (const [key, value] of map) {
+    if (value.editing) {
+      next.set(key, { ...value, editing: false })
+      dirty = true
+    } else {
+      next.set(key, value)
+    }
+  }
+  return dirty ? next : map
+}
+
 export function useAdjacency (initial: Adjacency) {
   const [hist, setHist] = useState<History>({
     present: initial,
@@ -61,7 +78,7 @@ export function useAdjacency (initial: Adjacency) {
       if (!record) return { ...h, present: next }
       return {
         present: next,
-        past: [...h.past, h.present].slice(-HISTORY_CAP),
+        past: [...h.past, withoutEditing(h.present)].slice(-HISTORY_CAP),
         future: []
       }
     })
@@ -101,6 +118,20 @@ export function useAdjacency (initial: Adjacency) {
     }, true)
   }
 
+  // Remove several nodes (each with its branch) in a single undo step.
+  const removeMany = (ids: NodeId[]) => {
+    apply((prev) => {
+      const nodes = withIds(prev)
+      const next = new Map(prev)
+      for (const id of ids) {
+        const old = nodes.find((n) => n.id === id)
+        if (!old) continue
+        for (const el of [...branch(nodes, id), old]) next.delete(el.id)
+      }
+      return next
+    }, true)
+  }
+
   const update = (node: RawNode & { id: NodeId }) => {
     apply((prev) => {
       const next = new Map(prev)
@@ -119,6 +150,28 @@ export function useAdjacency (initial: Adjacency) {
       const next = new Map(prev)
       for (const el of [...branch(nodes, node.id), old]) {
         next.set(el.id, { ...el, x: el.x - offsetX, y: el.y - offsetY })
+      }
+      return next
+    }, false)
+  }
+
+  // Shift several branches (roots + descendants) by the same delta. `ids` must
+  // be selection *roots* (no id an ancestor of another) so nothing moves twice.
+  // Gesture edit — history is snapshotted once by the caller.
+  const moveBranchesBy = (ids: NodeId[], dx: number, dy: number) => {
+    apply((prev) => {
+      const nodes = withIds(prev)
+      const next = new Map(prev)
+      const moved = new Set<NodeId>()
+      for (const id of ids) {
+        const root = nodes.find((n) => n.id === id)
+        if (!root) continue
+        for (const el of [...branch(nodes, id), root]) {
+          if (moved.has(el.id)) continue
+          moved.add(el.id)
+          const cur = next.get(el.id)
+          if (cur) next.set(el.id, { ...cur, x: cur.x + dx, y: cur.y + dy })
+        }
       }
       return next
     }, false)
@@ -152,7 +205,7 @@ export function useAdjacency (initial: Adjacency) {
   const pushSnapshot = (snapshot: Adjacency) => {
     setHist((h) => ({
       present: h.present,
-      past: [...h.past, snapshot].slice(-HISTORY_CAP),
+      past: [...h.past, withoutEditing(snapshot)].slice(-HISTORY_CAP),
       future: []
     }))
   }
@@ -185,9 +238,11 @@ export function useAdjacency (initial: Adjacency) {
     paths,
     add,
     remove,
+    removeMany,
     update,
     updatePosition,
     updateBranch,
+    moveBranchesBy,
     setEditing,
     pushSnapshot,
     undo,
