@@ -726,7 +726,8 @@ function Editor ({ id }: { id: string }) {
             node={editingNode}
             left={editorOverlayAnchor(editingNode).x * viewport.scale + viewport.offsetX}
             top={editorOverlayAnchor(editingNode).y * viewport.scale + viewport.offsetY}
-            anchor={editorOverlayAnchor(editingNode).anchor}
+            anchorX={editorOverlayAnchor(editingNode).anchorX}
+            anchorY={editorOverlayAnchor(editingNode).anchorY}
             scale={viewport.scale}
             onInput={(value) => {
               // Snapshot the pre-typing state once, at the first keystroke.

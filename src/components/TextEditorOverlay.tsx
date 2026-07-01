@@ -12,7 +12,8 @@ export function TextEditorOverlay ({
   left,
   top,
   scale = 1,
-  anchor = 'center',
+  anchorX = 'center',
+  anchorY = 'center',
   onInput,
   onStartResize
 }: {
@@ -20,15 +21,18 @@ export function TextEditorOverlay ({
   left: number
   top: number
   scale?: number
-  /** Which edge of the overlay sits on (left, top): the node's connection point. */
-  anchor?: 'left' | 'right' | 'center'
+  /** Which corner of the overlay sits on (left, top): the node's connection point. */
+  anchorX?: 'left' | 'right' | 'center'
+  anchorY?: 'top' | 'bottom' | 'center'
   onInput: (value: string) => void
   onStartResize: (node: MindNode, e: MouseEvent) => void
 }) {
-  // Anchor an edge of the overlay to (left, top). Matching the transform-origin
-  // to that edge keeps it pinned there at any zoom (scale is applied around it).
-  const originX = anchor === 'left' ? '0%' : anchor === 'right' ? '100%' : '50%'
-  const translateX = anchor === 'left' ? '0%' : anchor === 'right' ? '-100%' : '-50%'
+  // Anchor a corner of the overlay to (left, top). Matching the transform-origin
+  // to that corner keeps it pinned there at any zoom (scale is applied around it).
+  const originX = anchorX === 'left' ? '0%' : anchorX === 'right' ? '100%' : '50%'
+  const translateX = anchorX === 'left' ? '0%' : anchorX === 'right' ? '-100%' : '-50%'
+  const originY = anchorY === 'top' ? '0%' : anchorY === 'bottom' ? '100%' : '50%'
+  const translateY = anchorY === 'top' ? '0%' : anchorY === 'bottom' ? '-100%' : '-50%'
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const toolbar = useMarkdownToolbar(textareaRef, onInput)
 
@@ -54,8 +58,8 @@ export function TextEditorOverlay ({
       style={{
         left,
         top,
-        transformOrigin: `${originX} center`,
-        transform: `translate(${translateX}, -50%) scale(${scale})`
+        transformOrigin: `${originX} ${originY}`,
+        transform: `translate(${translateX}, ${translateY}) scale(${scale})`
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}

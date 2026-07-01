@@ -34,24 +34,41 @@ function nodeTextOffset (
 }
 
 /**
- * Where the editing overlay should attach, in world space, and which edge of the
- * overlay anchors there. A node connects to its branch at its point (node.x/y),
- * so the overlay hangs off that point on the side the text grows: a left-side
- * node (right-aligned text) anchors its right edge, a right-side node its left.
- * The root is centred on its point; a sticky note is centred on its own box.
+ * Where the editing overlay attaches (world space) and which corner of the
+ * overlay anchors there — mirroring `nodeTextOffset`, so the overlay lands
+ * exactly where the text draws:
+ *  - root: centred on its point;
+ *  - sticky: top-left at its point;
+ *  - leaf: point sits at the near horizontal edge, vertically centred;
+ *  - branch (has children): text box is pushed to a side *and* up/down, so the
+ *    point sits at a corner (opposite horizontal edge, top/bottom by up-side).
  */
 export function editorOverlayAnchor (node: MindNode): {
   x: number
   y: number
-  anchor: 'left' | 'right' | 'center'
+  anchorX: 'left' | 'right' | 'center'
+  anchorY: 'top' | 'bottom' | 'center'
 } {
   if (node.sticky) {
-    return { x: node.x + node.width / 2, y: node.y + node.height / 2, anchor: 'center' }
+    return { x: node.x, y: node.y, anchorX: 'left', anchorY: 'top' }
   }
   if (node.component === 'root') {
-    return { x: node.x, y: node.y, anchor: 'center' }
+    return { x: node.x, y: node.y, anchorX: 'center', anchorY: 'center' }
   }
-  return { x: node.x, y: node.y, anchor: node.isRightSide ? 'left' : 'right' }
+  if (node.isHaveChildren) {
+    return {
+      x: node.x,
+      y: node.y,
+      anchorX: node.isRightSide ? 'right' : 'left',
+      anchorY: node.isUpSide ? 'bottom' : 'top'
+    }
+  }
+  return {
+    x: node.x,
+    y: node.y,
+    anchorX: node.isRightSide ? 'left' : 'right',
+    anchorY: 'center'
+  }
 }
 
 export interface NodeSceneProps {
