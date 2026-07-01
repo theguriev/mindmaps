@@ -1,0 +1,88 @@
+import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react'
+import type { MindNode } from '@/mindmap/types'
+import { useMarkdownToolbar } from '@/hooks/useMarkdownToolbar'
+import { TextToolBar } from './TextToolBar'
+
+/**
+ * DOM textarea overlay for editing a node's markdown source. Positioned over the
+ * node in screen space; the canvas hides the node's text while this is open.
+ */
+export function TextEditorOverlay ({
+  node,
+  left,
+  top,
+  scale = 1,
+  onInput,
+  onStartResize
+}: {
+  node: MindNode
+  left: number
+  top: number
+  scale?: number
+  onInput: (value: string) => void
+  onStartResize: (node: MindNode, e: MouseEvent) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const toolbar = useMarkdownToolbar(textareaRef, onInput)
+
+  // Restore selection after a formatting action re-renders the value.
+  useLayoutEffect(() => {
+    const ta = textareaRef.current
+    if (ta && toolbar.pendingSel.current) {
+      ta.focus()
+      ta.setSelectionRange(
+        toolbar.pendingSel.current.start,
+        toolbar.pendingSel.current.end
+      )
+      toolbar.pendingSel.current = null
+    }
+  }, [node.name, toolbar.pendingSel])
+
+  // Focus on open.
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (ta) {
+      ta.focus()
+      const len = ta.value.length
+      ta.setSelectionRange(len, len)
+    }
+  }, [])
+
+  return (
+    <div
+      className="node-editor-overlay"
+      style={{ left, top, transform: `translate(-50%, -50%) scale(${scale})` }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <TextToolBar
+        actions={{
+          bold: toolbar.bold,
+          italic: toolbar.italic,
+          strikethrough: toolbar.strikethrough,
+          code: toolbar.code,
+          link: toolbar.link,
+          orderedList: toolbar.orderedList,
+          bulletedList: toolbar.bulletedList,
+          blockquote: toolbar.blockquote
+        }}
+      />
+      <textarea
+        ref={textareaRef}
+        rows={1}
+        value={node.name}
+        style={{ width: node.width, height: node.height }}
+        onChange={(e) => onInput(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+      />
+      <div
+        className="resizer"
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          e.preventDefault()
+          onStartResize(node, e)
+        }}
+      />
+    </div>
+  )
+}

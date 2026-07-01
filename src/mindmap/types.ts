@@ -1,0 +1,61 @@
+/** Domain model types for the mind map. */
+
+export type NodeId = string | number
+
+/** A raw stored node (as persisted in localStorage `content` entries). */
+export interface RawNode {
+  id?: NodeId
+  name: string
+  x: number
+  y: number
+  parent?: NodeId
+  stroke?: string
+  width?: number
+  height?: number
+  editing?: boolean
+  component?: 'root' | 'node'
+  isRightSide?: boolean
+  isUpSide?: boolean
+  isHaveChildren?: boolean
+}
+
+/** An enriched node produced by `prepareList` (all derived fields filled). */
+export interface MindNode extends RawNode {
+  id: NodeId
+  width: number
+  height: number
+  editing: boolean
+  component: 'root' | 'node'
+  isRightSide: boolean
+  isUpSide: boolean
+  isHaveChildren: boolean
+}
+
+export interface PathEdge {
+  id: string
+  fromID: NodeId
+  toID: NodeId
+  x: number
+  y: number
+  x2: number
+  y2: number
+  x3: number
+  y3: number
+  x4: number
+  y4: number
+  isRightSide: boolean
+  strokeWidth: number
+  stroke: string
+}
+
+export type Adjacency = Map<NodeId, RawNode>
+
+/** A persisted map document. */
+export interface MapDoc {
+  id: NodeId
+  title: string
+  content: Array<[NodeId, RawNode]>
+  modified?: string
+  date?: string
+  meta?: { template?: string }
+}
