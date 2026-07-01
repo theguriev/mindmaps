@@ -287,9 +287,6 @@ function Editor ({ id }: { id: string }) {
     editDirtyRef.current = true
   }
 
-  // Pointer tool — clears the current selection.
-  const onSelectTool = () => setSelectedIds(new Set())
-
   // Add a fresh, parentless root node at the centre of the current view.
   const onAddRoot = () => {
     const cx = (width / 2 - viewport.offsetX) / viewport.scale
@@ -730,9 +727,7 @@ function Editor ({ id }: { id: string }) {
           canRedo={canRedo}
         />
         <CreateToolbar
-          onSelectTool={onSelectTool}
           onAddRoot={onAddRoot}
-          reactionEmoji="🥰"
           onReactionDragStart={onReactionDragStart}
         />
         {reactionDrag && (
