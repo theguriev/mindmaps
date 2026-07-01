@@ -25,7 +25,7 @@ import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { EdgeEditor } from '@/components/EdgeEditor'
 import { ModalShortcuts } from '@/components/ModalShortcuts'
 import { Toolbar } from '@/components/Toolbar'
-import { FooterLogo } from '@/components/FooterLogo'
+import { CanvasControls } from '@/components/CanvasControls'
 
 export const Route = createFileRoute('/map/$id')({
   component: MapRoute
@@ -156,7 +156,9 @@ function Editor ({ id }: { id: string }) {
     setEditing,
     pushSnapshot,
     undo,
-    redo
+    redo,
+    canUndo,
+    canRedo
   } = useAdjacency(initial)
 
   const viewport = useViewport(contentRef)
@@ -645,7 +647,14 @@ function Editor ({ id }: { id: string }) {
             onStartResize={onStartResize}
           />
         )}
-        <FooterLogo />
+        <CanvasControls
+          onZoomOut={viewport.zoomOut}
+          onZoomIn={viewport.zoomIn}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+        />
       </div>
       {color.visible && (
         <EdgeEditor

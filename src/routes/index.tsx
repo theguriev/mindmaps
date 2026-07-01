@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/popover'
 import { MapItem } from '@/components/MapItem'
 import { Templates } from '@/components/Templates'
-import { FooterLogo } from '@/components/FooterLogo'
 import { listTemplates, prepareTemplate, type TemplateDoc } from '@/templates'
 import { addMap, allMaps, delMaps, saveMap } from '@/api/maps'
 import type { MapDoc } from '@/mindmap/types'
@@ -115,7 +114,6 @@ function Home () {
           </div>
         )}
       </div>
-      <FooterLogo />
     </div>
   )
 }
