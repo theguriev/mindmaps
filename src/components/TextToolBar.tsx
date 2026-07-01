@@ -63,7 +63,7 @@ export function TextToolBar ({ actions }: { actions: ToolbarActions }) {
   ]
 
   return (
-    <div className="absolute top-1 left-1 z-10 flex rounded-md border bg-background p-0.5 shadow-sm">
+    <div className="absolute top-1 left-1 z-10 flex rounded-md bg-background p-0.5">
       {items.map(({ icon: Icon, label, keys, run }) => (
         <Tooltip key={label}>
           <TooltipTrigger asChild>
