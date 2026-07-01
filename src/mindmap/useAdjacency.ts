@@ -107,6 +107,17 @@ export function useAdjacency (initial: Adjacency) {
     return id
   }
 
+  // Add a new, parentless root node at (x, y) — starts a separate tree.
+  const addRoot = (x: number, y: number): NodeId => {
+    const id = guid()
+    apply((prev) => {
+      const next = new Map(prev)
+      next.set(id, { name: '', x, y })
+      return next
+    }, true)
+    return id
+  }
+
   // Add a sticky note tethered to `parentID` — a yellow card offset below the
   // parent, connected by a thin dashed grey line (no arrow-heads).
   const addSticky = (parentID: NodeId): NodeId => {
@@ -216,6 +227,17 @@ export function useAdjacency (initial: Adjacency) {
     }, true)
   }
 
+  // Set (or, when re-applied, clear) an emoji reaction on a node. Records once.
+  const setReaction = (id: NodeId, reaction: string) => {
+    apply((prev) => {
+      const cur = prev.get(id)
+      if (!cur) return prev
+      const next = new Map(prev)
+      next.set(id, { ...cur, reaction: cur.reaction === reaction ? undefined : reaction })
+      return next
+    }, true)
+  }
+
   const setEditing = (editID: NodeId | null) => {
     apply((prev) => {
       const next = new Map<NodeId, RawNode>()
@@ -263,6 +285,7 @@ export function useAdjacency (initial: Adjacency) {
     list,
     paths,
     add,
+    addRoot,
     addSticky,
     remove,
     removeMany,
@@ -270,6 +293,7 @@ export function useAdjacency (initial: Adjacency) {
     updatePosition,
     updateBranch,
     moveBranchesBy,
+    setReaction,
     setEditing,
     pushSnapshot,
     undo,

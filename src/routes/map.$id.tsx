@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent
+} from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Canvas, type CanvasHandle } from '@/renderer/Canvas'
 import type { PointerPayload, SceneNode } from '@/renderer/types'
@@ -32,6 +38,7 @@ import { EdgeEditor } from '@/components/EdgeEditor'
 import { ModalShortcuts } from '@/components/ModalShortcuts'
 import { Toolbar } from '@/components/Toolbar'
 import { CanvasControls } from '@/components/CanvasControls'
+import { CreateToolbar } from '@/components/CreateToolbar'
 
 export const Route = createFileRoute('/map/$id')({
   component: MapRoute
@@ -154,12 +161,14 @@ function Editor ({ id }: { id: string }) {
     list,
     paths,
     add,
+    addRoot,
     addSticky,
     remove,
     removeMany,
     update,
     updateBranch,
     moveBranchesBy,
+    setReaction,
     setEditing,
     pushSnapshot,
     undo,
@@ -179,6 +188,10 @@ function Editor ({ id }: { id: string }) {
   const [selectedIds, setSelectedIds] = useState<Set<NodeId>>(new Set())
   const [marquee, setMarquee] = useState<
     { x: number; y: number; w: number; h: number } | null
+  >(null)
+  // A reaction emoji being dragged from the bottom toolbar onto a node.
+  const [reactionDrag, setReactionDrag] = useState<
+    { emoji: string; x: number; y: number } | null
   >(null)
 
   // The "active" node — target for Tab / Enter / arrow keys when several are
@@ -274,6 +287,27 @@ function Editor ({ id }: { id: string }) {
     editDirtyRef.current = true
   }
 
+  // Pointer tool — clears the current selection.
+  const onSelectTool = () => setSelectedIds(new Set())
+
+  // Add a fresh, parentless root node at the centre of the current view.
+  const onAddRoot = () => {
+    const cx = (width / 2 - viewport.offsetX) / viewport.scale
+    const cy = (height / 2 - viewport.offsetY) / viewport.scale
+    const roots = Array.from(list.values()).filter((n) => n.parent === undefined).length
+    const newId = addRoot(cx + roots * 24, cy + roots * 24)
+    setSelectedIds(new Set([newId]))
+    setEditing(newId)
+    editDirtyRef.current = true
+  }
+
+  // Start dragging a reaction from the toolbar; it drops onto the hovered node.
+  const onReactionDragStart = (emoji: string, e: ReactPointerEvent) => {
+    e.preventDefault()
+    closeEditingIfAny()
+    setReactionDrag({ emoji, x: e.clientX, y: e.clientY })
+  }
+
   const onBackgroundPointerDown = (e: PointerPayload) => {
     closeEditingIfAny()
     // Space held → pan the canvas (Figma). Otherwise drag a selection marquee.
@@ -302,6 +336,10 @@ function Editor ({ id }: { id: string }) {
 
   // ---- Global drag / pan / resize movement ----
   useEvent<MouseEvent & globalThis.MouseEvent>('mousemove', (event) => {
+    if (reactionDrag) {
+      setReactionDrag((rd) => (rd ? { ...rd, x: event.clientX, y: event.clientY } : null))
+      return
+    }
     if (dragRef.current) {
       const handle = canvasRef.current
       if (!handle) return
@@ -366,6 +404,14 @@ function Editor ({ id }: { id: string }) {
       }
       marqueeRef.current = null
       setMarquee(null)
+    }
+    // Drop a dragged reaction onto whatever node is under the cursor.
+    if (reactionDrag) {
+      if (hoveredId != null) {
+        const target = Array.from(list.values()).find((n) => String(n.id) === hoveredId)
+        if (target) setReaction(target.id, reactionDrag.emoji)
+      }
+      setReactionDrag(null)
     }
   }
 
@@ -683,6 +729,20 @@ function Editor ({ id }: { id: string }) {
           canUndo={canUndo}
           canRedo={canRedo}
         />
+        <CreateToolbar
+          onSelectTool={onSelectTool}
+          onAddRoot={onAddRoot}
+          reactionEmoji="🥰"
+          onReactionDragStart={onReactionDragStart}
+        />
+        {reactionDrag && (
+          <div
+            className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 text-2xl leading-none"
+            style={{ left: reactionDrag.x, top: reactionDrag.y }}
+          >
+            {reactionDrag.emoji}
+          </div>
+        )}
       </div>
       {color.visible && (
         <EdgeEditor

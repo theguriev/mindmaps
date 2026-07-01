@@ -23,6 +23,20 @@ describe('prepareList', () => {
     expect(list.get(0)?.height).toBe(32)
   })
 
+  it('treats every parentless node as a root (multiple trees)', () => {
+    const adj: Adjacency = new Map<NodeId, RawNode>([
+      [0, { name: 'root', x: 0, y: 0 }],
+      ['r2', { name: 'second root', x: 400, y: 0 }],
+      ['c', { name: 'child', x: 500, y: 0, parent: 'r2' }]
+    ])
+    const list = prepareList(adj)
+    expect(list.get(0)?.component).toBe('root')
+    expect(list.get('r2')?.component).toBe('root')
+    expect(list.get('c')?.component).toBe('node')
+    // Only the child produces an edge; the two roots have none.
+    expect(preparePaths(list).size).toBe(1)
+  })
+
   it('gives sticky notes a larger default size', () => {
     const adj: Adjacency = new Map<NodeId, RawNode>([
       [0, { name: 'root', x: 0, y: 0 }],

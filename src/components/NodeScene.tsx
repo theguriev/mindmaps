@@ -68,6 +68,9 @@ export function NodeScene ({
   // Editing is handled by the DOM textarea overlay.
   if (node.editing) return null
 
+  // Optional emoji reaction badge, drawn ~24px at the node's top-right corner.
+  const reactionLayout = node.reaction ? measureMarkdown('## ' + node.reaction) : null
+
   // Sticky note: a yellow, handwritten card anchored at its top-left corner
   // (so the dashed tether from its parent meets the card, and the edit overlay
   // lines up with it).
@@ -108,6 +111,13 @@ export function NodeScene ({
           layout={stickyLayout}
           opacity={isPlaceholder ? 0.45 : 1}
         />
+        {reactionLayout && (
+          <markdown
+            x={node.width - reactionLayout.width / 2}
+            y={-reactionLayout.height / 2}
+            layout={reactionLayout}
+          />
+        )}
       </group>
     )
   }
@@ -150,6 +160,13 @@ export function NodeScene ({
           layout={layout}
           opacity={opacity}
         />
+        {reactionLayout && (
+          <markdown
+            x={boxW / 2 - reactionLayout.width / 2}
+            y={-boxH / 2 - reactionLayout.height / 2}
+            layout={reactionLayout}
+          />
+        )}
         {hovered && (
           <plus
             x={0}
@@ -191,6 +208,13 @@ export function NodeScene ({
         onDoubleClick={() => onEdit(node)}
       />
       <markdown x={tx} y={ty} layout={layout} opacity={opacity} />
+      {reactionLayout && (
+        <markdown
+          x={tx + layout.width - reactionLayout.width / 2}
+          y={ty - reactionLayout.height / 2}
+          layout={reactionLayout}
+        />
+      )}
       {hovered && (
         <plus
           x={0}

@@ -49,7 +49,8 @@ export function prepareList (adjacency: Adjacency): Map<NodeId, MindNode> {
     result.set(key, {
       ...value,
       id,
-      component: id === 0 ? 'root' : 'node',
+      // Any parentless node is a root (the map can hold several separate trees).
+      component: value.parent === undefined ? 'root' : 'node',
       editing: value.editing === true,
       width: value.width || (value.sticky ? 200 : 140),
       height: value.height || (value.sticky ? 130 : 32),

@@ -22,6 +22,8 @@ export interface RawNode {
   editing?: boolean
   /** A free-floating yellow sticky note tethered to its parent by a dashed line. */
   sticky?: boolean
+  /** An emoji reaction badge shown at the node's top-right corner. */
+  reaction?: string
   component?: 'root' | 'node'
   isRightSide?: boolean
   isUpSide?: boolean
