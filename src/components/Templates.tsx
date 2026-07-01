@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Input } from '@/ui'
 import type { TemplateDoc } from '@/templates'
 
@@ -10,14 +10,9 @@ export function Templates ({
   onChoose: (template: TemplateDoc) => void
 }) {
   const [search, setSearch] = useState('')
-  const filtered = useMemo(
-    () =>
-      templates.filter(
-        (t) =>
-          t.title.indexOf(search) > -1 ||
-          (t.description ?? '').indexOf(search) > -1
-      ),
-    [templates, search]
+  const filtered = templates.filter(
+    (t) =>
+      t.title.indexOf(search) > -1 || (t.description ?? '').indexOf(search) > -1
   )
 
   return (

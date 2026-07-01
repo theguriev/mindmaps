@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Canvas, type CanvasHandle } from '@/renderer/Canvas'
 import type { PointerPayload, SceneNode } from '@/renderer/types'
@@ -56,13 +56,13 @@ interface ResizeState {
 
 function Editor ({ id }: { id: string }) {
   const navigate = useNavigate()
-  const doc = useMemo(() => getMap(id), [id])
+  const doc = getMap(id)
 
   const contentRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<CanvasHandle | null>(null)
   const { width, height } = useOnResize(contentRef)
 
-  const initial = useMemo(() => new Map(doc?.content ?? []), [doc])
+  const initial = new Map(doc?.content ?? [])
   const {
     adjacency,
     list,
@@ -87,76 +87,58 @@ function Editor ({ id }: { id: string }) {
   const panRef = useRef<PanState | null>(null)
   const resizeRef = useRef<ResizeState | null>(null)
 
-  const editingNode = useMemo(
-    () => Array.from(list.values()).find((n) => n.editing) ?? null,
-    [list]
-  )
+  const editingNode = Array.from(list.values()).find((n) => n.editing) ?? null
 
   useEffect(() => {
     if (!doc) navigate({ to: '/' })
   }, [doc, navigate])
 
-  const closeEditingIfAny = useCallback(() => {
+  const closeEditingIfAny = () => {
     if (editingNode) setEditing(null)
-  }, [editingNode, setEditing])
+  }
 
   // ---- Scene interaction handlers ----
-  const onColor = useCallback(
-    (edge: PathEdge, e: PointerPayload) => {
-      // Stop this click from reaching the window-level close handler below.
-      e.originalEvent.stopPropagation()
-      pathClick(edge, e.originalEvent.clientX, e.originalEvent.clientY)
-    },
-    [pathClick]
-  )
+  const onColor = (edge: PathEdge, e: PointerPayload) => {
+    // Stop this click from reaching the window-level close handler below.
+    e.originalEvent.stopPropagation()
+    pathClick(edge, e.originalEvent.clientX, e.originalEvent.clientY)
+  }
 
-  const onDragStart = useCallback(
-    (node: MindNode, e: PointerPayload) => {
-      closeEditingIfAny()
-      dragRef.current = {
-        node,
-        offsetX: e.worldX - node.x,
-        offsetY: e.worldY - node.y
-      }
-    },
-    [closeEditingIfAny]
-  )
+  const onDragStart = (node: MindNode, e: PointerPayload) => {
+    closeEditingIfAny()
+    dragRef.current = {
+      node,
+      offsetX: e.worldX - node.x,
+      offsetY: e.worldY - node.y
+    }
+  }
 
-  const onEdit = useCallback((node: MindNode) => setEditing(node.id), [setEditing])
+  const onEdit = (node: MindNode) => setEditing(node.id)
 
-  const onAdd = useCallback(
-    (node: MindNode) => {
-      if (node.component === 'root') {
-        add(node.id, 0)
-      } else {
-        add(node.id, ADD_OFFSET.get(clockIndex(node)) ?? 0)
-      }
-    },
-    [add]
-  )
+  const onAdd = (node: MindNode) => {
+    if (node.component === 'root') {
+      add(node.id, 0)
+    } else {
+      add(node.id, ADD_OFFSET.get(clockIndex(node)) ?? 0)
+    }
+  }
 
-  const onRemove = useCallback((nodeId: NodeId) => remove(nodeId), [remove])
+  const onRemove = (nodeId: NodeId) => remove(nodeId)
 
-  const onBackgroundPointerDown = useCallback(
-    (e: PointerPayload) => {
-      closeEditingIfAny()
-      panRef.current = {
-        startClientX: e.originalEvent.clientX,
-        startClientY: e.originalEvent.clientY,
-        baseX: viewport.oxRef.current,
-        baseY: viewport.oyRef.current
-      }
-    },
-    [closeEditingIfAny, viewport.oxRef, viewport.oyRef]
-  )
+  const onBackgroundPointerDown = (e: PointerPayload) => {
+    closeEditingIfAny()
+    panRef.current = {
+      startClientX: e.originalEvent.clientX,
+      startClientY: e.originalEvent.clientY,
+      baseX: viewport.oxRef.current,
+      baseY: viewport.oyRef.current
+    }
+  }
 
-  const onCanvasPointerMove = useCallback(
-    (_e: PointerPayload, hit: SceneNode | null) => {
-      const nextId = (hit?.props.hitId as string | undefined) ?? null
-      setHoveredId((prev) => (prev === nextId ? prev : nextId))
-    },
-    []
-  )
+  const onCanvasPointerMove = (_e: PointerPayload, hit: SceneNode | null) => {
+    const nextId = (hit?.props.hitId as string | undefined) ?? null
+    setHoveredId((prev) => (prev === nextId ? prev : nextId))
+  }
 
   // ---- Global drag / pan / resize movement ----
   useEvent<MouseEvent & globalThis.MouseEvent>('mousemove', (event) => {
@@ -187,11 +169,11 @@ function Editor ({ id }: { id: string }) {
     }
   })
 
-  const endInteractions = useCallback(() => {
+  const endInteractions = () => {
     dragRef.current = null
     panRef.current = null
     resizeRef.current = null
-  }, [])
+  }
 
   useEvent('mouseup', endInteractions)
   useEvent('mouseleave', endInteractions)
@@ -202,7 +184,7 @@ function Editor ({ id }: { id: string }) {
     if (color.visible) closeColor()
   })
 
-  const onStartResize = useCallback((node: MindNode, e: MouseEvent) => {
+  const onStartResize = (node: MindNode, e: MouseEvent) => {
     resizeRef.current = {
       id: node.id,
       startW: node.width,
@@ -210,10 +192,10 @@ function Editor ({ id }: { id: string }) {
       startClientX: e.clientX,
       startClientY: e.clientY
     }
-  }, [])
+  }
 
   // ---- Save ----
-  const save = useCallback(() => {
+  const save = () => {
     if (!doc) return
     const root = adjacency.get(0)
     saveMap(id, {
@@ -223,7 +205,7 @@ function Editor ({ id }: { id: string }) {
       content: Array.from(adjacency.entries()),
       modified: new Date().toISOString()
     })
-  }, [adjacency, doc, id])
+  }
 
   // ---- Keyboard ----
   useEvent<KeyboardEvent>('keydown', (event) => {

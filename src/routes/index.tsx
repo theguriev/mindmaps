@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Button, Divider, Empty, Input, Popover } from '@/ui'
 import { MapItem } from '@/components/MapItem'
@@ -27,18 +27,14 @@ function Home () {
   const reload = () => setMaps(allMaps())
   useEffect(reload, [])
 
-  const filteredMaps = useMemo(
-    () =>
-      maps.filter(
-        (el) =>
-          (el.title ?? '')
-            .toLocaleLowerCase()
-            .indexOf(filterText.toLocaleLowerCase()) > -1
-      ),
-    [maps, filterText]
+  const filteredMaps = maps.filter(
+    (el) =>
+      (el.title ?? '')
+        .toLocaleLowerCase()
+        .indexOf(filterText.toLocaleLowerCase()) > -1
   )
 
-  const templates = useMemo(() => listTemplates(maps), [maps])
+  const templates = listTemplates(maps)
 
   const go = (map: MapDoc) =>
     navigate({ to: '/map/$id', params: { id: String(map.id) } })

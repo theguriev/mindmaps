@@ -1,9 +1,11 @@
 /**
  * React port of the Vue `useAdjacency` composable. Holds the raw adjacency map
- * as state; derives `list` and `paths` with memoization; exposes the same
- * mutation surface (add / remove / update / updateBranch / updatePosition).
+ * as state; derives `list` and `paths`; exposes the same mutation surface
+ * (add / remove / update / updateBranch / updatePosition).
+ *
+ * Memoization is left to the React Compiler — no manual useMemo/useCallback.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { Adjacency, MindNode, NodeId, RawNode } from './types'
 import { branch, children, prepareList, preparePaths } from './list'
 import { getNewPosition } from './geometry'
@@ -31,10 +33,10 @@ function withIds (map: Adjacency): Array<RawNode & { id: NodeId }> {
 export function useAdjacency (initial: Adjacency) {
   const [adjacency, setAdjacency] = useState<Adjacency>(initial)
 
-  const list = useMemo(() => prepareList(adjacency), [adjacency])
-  const paths = useMemo(() => preparePaths(list), [list])
+  const list = prepareList(adjacency)
+  const paths = preparePaths(list)
 
-  const add = useCallback((parentID: NodeId, offsetIndex: number) => {
+  const add = (parentID: NodeId, offsetIndex: number) => {
     setAdjacency((prev) => {
       const parent = prev.get(parentID)
       if (!parent) return prev
@@ -50,9 +52,9 @@ export function useAdjacency (initial: Adjacency) {
       })
       return next
     })
-  }, [])
+  }
 
-  const remove = useCallback((id: NodeId) => {
+  const remove = (id: NodeId) => {
     setAdjacency((prev) => {
       const nodes = withIds(prev)
       const old = nodes.find((n) => n.id === id)
@@ -61,17 +63,17 @@ export function useAdjacency (initial: Adjacency) {
       for (const el of [...branch(nodes, id), old]) next.delete(el.id)
       return next
     })
-  }, [])
+  }
 
-  const update = useCallback((node: RawNode & { id: NodeId }) => {
+  const update = (node: RawNode & { id: NodeId }) => {
     setAdjacency((prev) => {
       const next = new Map(prev)
       next.set(node.id, node)
       return next
     })
-  }, [])
+  }
 
-  const updatePosition = useCallback((node: MindNode) => {
+  const updatePosition = (node: MindNode) => {
     setAdjacency((prev) => {
       const nodes = withIds(prev)
       const old = nodes.find((n) => n.id === node.id)
@@ -84,9 +86,9 @@ export function useAdjacency (initial: Adjacency) {
       }
       return next
     })
-  }, [])
+  }
 
-  const updateBranch = useCallback((id: NodeId, newData: Partial<RawNode>) => {
+  const updateBranch = (id: NodeId, newData: Partial<RawNode>) => {
     setAdjacency((prev) => {
       const nodes = withIds(prev)
       const old = nodes.find((n) => n.id === id)
@@ -97,9 +99,9 @@ export function useAdjacency (initial: Adjacency) {
       }
       return next
     })
-  }, [])
+  }
 
-  const setEditing = useCallback((editID: NodeId | null) => {
+  const setEditing = (editID: NodeId | null) => {
     setAdjacency((prev) => {
       const next = new Map<NodeId, RawNode>()
       for (const [key, value] of prev.entries()) {
@@ -107,7 +109,7 @@ export function useAdjacency (initial: Adjacency) {
       }
       return next
     })
-  }, [])
+  }
 
   return {
     adjacency,

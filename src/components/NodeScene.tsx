@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import type { MindNode, NodeId } from '@/mindmap/types'
 import type { PointerPayload } from '@/renderer/types'
 import { measureMarkdown } from '@/markdown/measure'
@@ -56,10 +55,7 @@ export function NodeScene ({
     : node.name
   const align: 'left' | 'right' = isRoot ? 'left' : node.isRightSide ? 'left' : 'right'
 
-  const layout = useMemo(
-    () => measureMarkdown(text, { align }),
-    [text, align]
-  )
+  const layout = measureMarkdown(text, { align })
 
   // Editing is handled by the DOM textarea overlay.
   if (node.editing) return null

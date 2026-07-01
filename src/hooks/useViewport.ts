@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { isWheelRight, isWheelUp } from '@/utils/wheel'
 
 export interface ViewportOptions {
@@ -59,48 +59,44 @@ export function useViewport (
     }
   }
 
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      const area = areaRef.current
-      if (!area) return
-      const rect = area.getBoundingClientRect()
-      const cursorX = e.clientX - rect.left
-      const cursorY = e.clientY - rect.top
+  const handleWheel = (e: WheelEvent) => {
+    const area = areaRef.current
+    if (!area) return
+    const rect = area.getBoundingClientRect()
+    const cursorX = e.clientX - rect.left
+    const cursorY = e.clientY - rect.top
 
-      if (e.ctrlKey) {
-        const dir = isWheelUp(e)
-        if (dir === 1) increase(cursorX, cursorY)
-        else if (dir === -1) decrease(cursorX, cursorY)
-        e.preventDefault()
-        e.stopPropagation()
-        return
-      }
+    if (e.ctrlKey) {
+      const dir = isWheelUp(e)
+      if (dir === 1) increase(cursorX, cursorY)
+      else if (dir === -1) decrease(cursorX, cursorY)
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
 
-      if (!e.ctrlKey && !e.altKey && !e.shiftKey && e.metaKey) {
-        const step = 10
-        const up = isWheelUp(e)
-        const right = isWheelRight(e)
-        if (up === 1) setOY(oyRef.current - step)
-        else if (up === -1) setOY(oyRef.current + step)
-        if (right === 1) setOX(oxRef.current + step)
-        else if (right === -1) setOX(oxRef.current - step)
-        e.preventDefault()
-        e.stopPropagation()
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [areaRef]
-  )
+    if (!e.ctrlKey && !e.altKey && !e.shiftKey && e.metaKey) {
+      const step = 10
+      const up = isWheelUp(e)
+      const right = isWheelRight(e)
+      if (up === 1) setOY(oyRef.current - step)
+      else if (up === -1) setOY(oyRef.current + step)
+      if (right === 1) setOX(oxRef.current + step)
+      else if (right === -1) setOX(oxRef.current - step)
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
 
-  const panBy = useCallback((dx: number, dy: number) => {
+  const panBy = (dx: number, dy: number) => {
     setOX(oxRef.current + dx)
     setOY(oyRef.current + dy)
-  }, [])
+  }
 
-  const setOffset = useCallback((x: number, y: number) => {
+  const setOffset = (x: number, y: number) => {
     setOX(x)
     setOY(y)
-  }, [])
+  }
 
   return {
     scale,
