@@ -62,6 +62,12 @@ function refLink (
   push(inner)
 }
 
+// Remote images can't be embedded on the canvas without tainting it (which
+// breaks PNG/JPEG export), so an image renders as a labelled placeholder chip.
+function imageRun (alt: string, style: InlineStyle): InlineRun[] {
+  return [{ text: `🖼 ${alt.trim() || 'image'}`, style: { ...style } }]
+}
+
 const MATCHERS: Matcher[] = [
   {
     // Inline code — literal, no inner formatting.
@@ -69,6 +75,31 @@ const MATCHERS: Matcher[] = [
     precedence: 5,
     apply: (m, style, push) =>
       push([{ text: m[1], style: { ...style, code: true } }])
+  },
+  {
+    // Inline image ![alt](src "title") — placeholder chip.
+    re: /!\[([^\]]*)\]\(([^)]+)\)/,
+    precedence: 7,
+    apply: (m, style, push) => push(imageRun(m[1], style))
+  },
+  {
+    // Reference image ![alt][label] or collapsed ![alt][].
+    re: /!\[([^\]]*)\]\[([^\]]*)\]/,
+    precedence: 7,
+    apply: (m, style, push, defs) => {
+      const label = (m[2] || m[1]).trim().toLowerCase()
+      if (defs.get(label)) push(imageRun(m[1], style))
+      else push([{ text: m[0], style }])
+    }
+  },
+  {
+    // Shortcut reference image ![label].
+    re: /!\[([^\]]+)\]/,
+    precedence: 7,
+    apply: (m, style, push, defs) => {
+      if (defs.get(m[1].trim().toLowerCase())) push(imageRun(m[1], style))
+      else push([{ text: m[0], style }])
+    }
   },
   {
     // Autolink in angle brackets: <http://…> or <mailto:…>

@@ -56,6 +56,24 @@ describe('parseInline', () => {
     expect(runs.every((r) => !r.style.link)).toBe(true)
   })
 
+  it('renders an inline image as an alt-text placeholder, not a broken link', () => {
+    const runs = parseInline('![alt text](http://x/y.svg "Title")')
+    const text = runs.map((r) => r.text).join('')
+    expect(text).toContain('alt text')
+    expect(text).not.toContain('!') // the leading ! must be consumed
+    expect(text).not.toContain('](') // no raw link syntax leaks through
+    // A placeholder is plain text, not a link.
+    expect(runs.every((r) => !r.style.link)).toBe(true)
+  })
+
+  it('renders a reference-style image when its definition resolves', () => {
+    const defs = new Map([['logo', 'http://x/logo.svg']])
+    const runs = parseInline('![alt text][logo]', defs)
+    const text = runs.map((r) => r.text).join('')
+    expect(text).toContain('alt text')
+    expect(text).not.toContain('[')
+  })
+
   it('autolinks bare and angle-bracketed URLs, trimming trailing punctuation', () => {
     const bare = parseInline('see http://www.beagl.in.')
     expect(
