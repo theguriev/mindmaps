@@ -14,12 +14,14 @@ export function MindMapScene ({
   offsetX,
   offsetY,
   hoveredId,
+  selectedId,
   metaPressing,
   onColor,
   onDragStart,
   onEdit,
   onAdd,
-  onRemove
+  onRemove,
+  onSelect
 }: {
   list: Map<NodeId, MindNode>
   paths: Map<string, PathEdge>
@@ -27,12 +29,14 @@ export function MindMapScene ({
   offsetX: number
   offsetY: number
   hoveredId: string | null
+  selectedId: NodeId | null
   metaPressing: boolean
   onColor: (edge: PathEdge, e: PointerPayload) => void
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
+  onSelect: (node: MindNode) => void
 }) {
   return (
     <group x={offsetX} y={offsetY} scale={scale}>
@@ -44,11 +48,13 @@ export function MindMapScene ({
           key={String(node.id)}
           node={node}
           hovered={hoveredId === String(node.id)}
+          selected={selectedId === node.id}
           metaPressing={metaPressing}
           onDragStart={onDragStart}
           onEdit={onEdit}
           onAdd={onAdd}
           onRemove={onRemove}
+          onSelect={onSelect}
         />
       ))}
     </group>

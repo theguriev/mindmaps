@@ -8,6 +8,7 @@ const NODE_PLACEHOLDER = '🖱Double click to edit that'
 const ROOT_PAD_X = 16
 const ROOT_PAD_Y = 8
 const GAP = 8
+const SELECT_COLOR = '#409eff'
 
 /** Text placement relative to the node point, mirroring Node.vue's CSS. */
 function nodeTextOffset (
@@ -30,21 +31,25 @@ function nodeTextOffset (
 export interface NodeSceneProps {
   node: MindNode
   hovered: boolean
+  selected: boolean
   metaPressing: boolean
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
+  onSelect: (node: MindNode) => void
 }
 
 export function NodeScene ({
   node,
   hovered,
+  selected,
   metaPressing,
   onDragStart,
   onEdit,
   onAdd,
-  onRemove
+  onRemove,
+  onSelect
 }: NodeSceneProps) {
   const isRoot = node.component === 'root'
   const isPlaceholder = node.name === ''
@@ -67,6 +72,17 @@ export function NodeScene ({
     const boxH = layout.height + ROOT_PAD_Y * 2
     return (
       <group x={node.x} y={node.y}>
+        {selected && (
+          <box
+            x={-boxW / 2 - 4}
+            y={-boxH / 2 - 4}
+            width={boxW + 8}
+            height={boxH + 8}
+            radius={7}
+            stroke={SELECT_COLOR}
+            strokeWidth={2}
+          />
+        )}
         <box
           x={-boxW / 2}
           y={-boxH / 2}
@@ -79,6 +95,7 @@ export function NodeScene ({
           cursor="move"
           hitId={String(node.id)}
           onPointerDown={(e) => onDragStart(node, e)}
+          onClick={() => onSelect(node)}
           onDoubleClick={() => onEdit(node)}
         />
         <markdown
@@ -105,6 +122,17 @@ export function NodeScene ({
   const { x: tx, y: ty } = nodeTextOffset(node, layout.width, layout.height)
   return (
     <group x={node.x} y={node.y}>
+      {selected && (
+        <box
+          x={tx - 4}
+          y={ty - 4}
+          width={layout.width + 8}
+          height={layout.height + 8}
+          radius={7}
+          stroke={SELECT_COLOR}
+          strokeWidth={2}
+        />
+      )}
       <box
         x={tx}
         y={ty}
@@ -114,6 +142,7 @@ export function NodeScene ({
         cursor="move"
         hitId={String(node.id)}
         onPointerDown={(e) => onDragStart(node, e)}
+        onClick={() => onSelect(node)}
         onDoubleClick={() => onEdit(node)}
       />
       <markdown x={tx} y={ty} layout={layout} opacity={opacity} />

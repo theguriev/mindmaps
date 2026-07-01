@@ -10,7 +10,7 @@ import { useOnResize } from '@/hooks/useOnResize'
 import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
 import { getMap, saveMap } from '@/api/maps'
-import type { MindNode, NodeId, PathEdge } from '@/mindmap/types'
+import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import { ArrowLeftIcon, DownloadIcon, KeyboardIcon, SaveIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -63,6 +63,27 @@ interface ResizeState {
   startClientY: number
 }
 
+/** Move the selection with the arrow keys: ←parent, →first child, ↑/↓ siblings. */
+function navigateSelection (
+  list: Map<NodeId, MindNode>,
+  selectedId: NodeId,
+  key: string
+): NodeId | null {
+  const node = list.get(selectedId)
+  if (!node) return null
+  const nodes = Array.from(list.values())
+  if (key === 'ArrowLeft') return node.parent ?? null
+  if (key === 'ArrowRight') {
+    const child = nodes.find((n) => n.parent === selectedId)
+    return child ? child.id : null
+  }
+  const siblings = nodes.filter((n) => n.parent === node.parent)
+  const idx = siblings.findIndex((n) => n.id === selectedId)
+  if (key === 'ArrowUp') return idx > 0 ? siblings[idx - 1].id : null
+  if (key === 'ArrowDown') return idx < siblings.length - 1 ? siblings[idx + 1].id : null
+  return null
+}
+
 function Editor ({ id }: { id: string }) {
   // Opt out of the React Compiler: this component bridges into the custom canvas
   // reconciler by passing the scene (<MindMapScene/>) as `children` to <Canvas/>,
@@ -87,7 +108,10 @@ function Editor ({ id }: { id: string }) {
     update,
     updatePosition,
     updateBranch,
-    setEditing
+    setEditing,
+    pushSnapshot,
+    undo,
+    redo
   } = useAdjacency(initial)
 
   const viewport = useViewport(contentRef)
@@ -98,10 +122,29 @@ function Editor ({ id }: { id: string }) {
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
+  const [selectedId, setSelectedId] = useState<NodeId | null>(null)
 
   const dragRef = useRef<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
   const resizeRef = useRef<ResizeState | null>(null)
+  // Pre-gesture snapshots so a whole drag/resize/edit collapses to one undo
+  // step. `moveSnapRef` covers drag & resize (cleared on mouse-up); `editSnapRef`
+  // covers a typing session (cleared when editing closes).
+  const moveSnapRef = useRef<Adjacency | null>(null)
+  const editSnapRef = useRef<Adjacency | null>(null)
+
+  const recordMove = () => {
+    if (moveSnapRef.current) {
+      pushSnapshot(moveSnapRef.current)
+      moveSnapRef.current = null
+    }
+  }
+  const recordEdit = () => {
+    if (editSnapRef.current) {
+      pushSnapshot(editSnapRef.current)
+      editSnapRef.current = null
+    }
+  }
 
   const editingNode = Array.from(list.values()).find((n) => n.editing) ?? null
 
@@ -110,6 +153,7 @@ function Editor ({ id }: { id: string }) {
   }, [doc, navigate])
 
   const closeEditingIfAny = () => {
+    editSnapRef.current = null
     if (editingNode) setEditing(null)
   }
 
@@ -122,6 +166,8 @@ function Editor ({ id }: { id: string }) {
 
   const onDragStart = (node: MindNode, e: PointerPayload) => {
     closeEditingIfAny()
+    setSelectedId(node.id)
+    moveSnapRef.current = adjacency
     dragRef.current = {
       node,
       offsetX: e.worldX - node.x,
@@ -129,7 +175,12 @@ function Editor ({ id }: { id: string }) {
     }
   }
 
-  const onEdit = (node: MindNode) => setEditing(node.id)
+  const onSelect = (node: MindNode) => setSelectedId(node.id)
+
+  const onEdit = (node: MindNode) => {
+    editSnapRef.current = adjacency
+    setEditing(node.id)
+  }
 
   const onAdd = (node: MindNode) => {
     if (node.component === 'root') {
@@ -143,6 +194,7 @@ function Editor ({ id }: { id: string }) {
 
   const onBackgroundPointerDown = (e: PointerPayload) => {
     closeEditingIfAny()
+    setSelectedId(null)
     panRef.current = {
       startClientX: e.originalEvent.clientX,
       startClientY: e.originalEvent.clientY,
@@ -163,6 +215,7 @@ function Editor ({ id }: { id: string }) {
       if (!handle) return
       const world = handle.screenToWorld(event.clientX, event.clientY)
       const { node, offsetX, offsetY } = dragRef.current
+      recordMove()
       updatePosition({ ...node, x: world.x - offsetX, y: world.y - offsetY })
       return
     }
@@ -181,6 +234,7 @@ function Editor ({ id }: { id: string }) {
       const scale = viewport.scaleRef.current
       const width2 = Math.max(50, r.startW + (event.clientX - r.startClientX) / scale)
       const height2 = Math.max(32, r.startH + (event.clientY - r.startClientY) / scale)
+      recordMove()
       update({ ...node, width: width2, height: height2 })
     }
   })
@@ -189,6 +243,7 @@ function Editor ({ id }: { id: string }) {
     dragRef.current = null
     panRef.current = null
     resizeRef.current = null
+    moveSnapRef.current = null
   }
 
   useEvent('mouseup', endInteractions)
@@ -201,6 +256,7 @@ function Editor ({ id }: { id: string }) {
   })
 
   const onStartResize = (node: MindNode, e: MouseEvent) => {
+    moveSnapRef.current = adjacency
     resizeRef.current = {
       id: node.id,
       startW: node.width,
@@ -268,6 +324,13 @@ function Editor ({ id }: { id: string }) {
       savePng()
       return
     }
+    // ⌘Z / ⌘⇧Z — undo / redo (the textarea keeps its native undo while editing)
+    if (event.metaKey && event.code === 'KeyZ' && !editing) {
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+      return
+    }
     // ⌃⇧? — keyboard shortcuts panel
     if (event.ctrlKey && event.shiftKey && event.code === 'Slash') {
       event.preventDefault()
@@ -279,6 +342,65 @@ function Editor ({ id }: { id: string }) {
       if (editing) closeEditingIfAny()
       return
     }
+    // Node operations — require a selection, not while typing, no ⌘/Ctrl/Alt.
+    if (!editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      // Delete / Backspace — remove the selected node (never the root).
+      if (event.code === 'Delete' || event.code === 'Backspace') {
+        if (selectedId != null && selectedId !== 0) {
+          event.preventDefault()
+          remove(selectedId)
+          setSelectedId(null)
+        }
+        return
+      }
+      // Tab — add a child to the selection and start editing it.
+      if (event.code === 'Tab') {
+        event.preventDefault()
+        if (selectedId != null) {
+          const n = list.get(selectedId)
+          if (n) {
+            const offset = n.component === 'root' ? 0 : (ADD_OFFSET.get(clockIndex(n)) ?? 0)
+            const newId = add(selectedId, offset)
+            setSelectedId(newId)
+            setEditing(newId)
+          }
+        }
+        return
+      }
+      // Enter — add a sibling (a child of the selection's parent) and edit it.
+      if (event.code === 'Enter' && !event.shiftKey) {
+        event.preventDefault()
+        if (selectedId != null) {
+          const n = list.get(selectedId)
+          if (n) {
+            const parentId = n.parent
+            let newId: NodeId
+            if (parentId !== undefined) {
+              const parent = list.get(parentId)
+              const offset =
+                parent && parent.component !== 'root'
+                  ? (ADD_OFFSET.get(clockIndex(parent)) ?? 0)
+                  : 0
+              newId = add(parentId, offset)
+            } else {
+              // Root has no parent — Enter adds a child instead.
+              newId = add(n.id, 0)
+            }
+            setSelectedId(newId)
+            setEditing(newId)
+          }
+        }
+        return
+      }
+      // Arrows — move the selection through the tree.
+      if (event.key.startsWith('Arrow') && selectedId != null) {
+        event.preventDefault()
+        const next = navigateSelection(list, selectedId, event.key)
+        if (next != null) setSelectedId(next)
+        return
+      }
+    }
+
     // Navigation — only when not typing and without ⌘/Ctrl/Alt (so ⌘± page zoom
     // still works and typing +/-/0/1 in the editor is unaffected).
     if (!editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -376,12 +498,14 @@ function Editor ({ id }: { id: string }) {
             offsetX={viewport.offsetX}
             offsetY={viewport.offsetY}
             hoveredId={hoveredId}
+            selectedId={selectedId}
             metaPressing={metaPressing}
             onColor={onColor}
             onDragStart={onDragStart}
             onEdit={onEdit}
             onAdd={onAdd}
             onRemove={onRemove}
+            onSelect={onSelect}
           />
         </Canvas>
         {editingNode && (
@@ -390,7 +514,10 @@ function Editor ({ id }: { id: string }) {
             left={editingNode.x * viewport.scale + viewport.offsetX}
             top={editingNode.y * viewport.scale + viewport.offsetY}
             scale={viewport.scale}
-            onInput={(value) => update({ ...editingNode, name: value })}
+            onInput={(value) => {
+              recordEdit()
+              update({ ...editingNode, name: value })
+            }}
             onStartResize={onStartResize}
           />
         )}
