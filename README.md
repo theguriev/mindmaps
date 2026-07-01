@@ -43,6 +43,14 @@ paint.ts  → Canvas 2D          hitTest.ts → pointer routing
   `<textarea>` overlay appears only while editing a node.
 - **`src/ui/`** — small dependency-free UI primitives.
 
+## React Compiler
+
+The [React Compiler](https://react.dev/learn/react-compiler) (stable 1.0) is
+enabled to auto-memoize components/hooks. The oxc-based `@vitejs/plugin-react`
+doesn't run Babel, so the compiler is applied via `@rolldown/plugin-babel` +
+`reactCompilerPreset()` in `vite.config.ts`. React 19 ships the compiler
+runtime, so there is no extra runtime dependency.
+
 ## Requirements
 
 - Node ≥ 22.12 (see `.nvmrc` — pinned to 24)
