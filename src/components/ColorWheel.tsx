@@ -36,7 +36,7 @@ export function ColorWheel ({
 }) {
   return (
     <svg
-      className="color-wheel"
+      className="fixed z-50 -translate-x-1/2 -translate-y-1/2 [&_path]:cursor-pointer"
       width="180"
       height="180"
       viewBox="0 0 180 180"

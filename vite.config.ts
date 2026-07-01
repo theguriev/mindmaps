@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
+import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -13,7 +14,8 @@ export default defineConfig({
     // React Compiler auto-memoizes components/hooks. The oxc-based React plugin
     // doesn't run Babel, so the compiler is applied via @rolldown/plugin-babel.
     // React 19 ships the compiler runtime, so no extra runtime dep is needed.
-    babel({ presets: [reactCompilerPreset()] })
+    babel({ presets: [reactCompilerPreset()] }),
+    tailwindcss()
   ],
   resolve: {
     alias: {

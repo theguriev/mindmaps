@@ -11,6 +11,15 @@ import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
 import { getMap, saveMap } from '@/api/maps'
 import type { MindNode, NodeId, PathEdge } from '@/mindmap/types'
+import { ArrowLeftIcon, DownloadIcon, KeyboardIcon, SaveIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { MindMapScene } from '@/components/MindMapScene'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { ColorWheel } from '@/components/ColorWheel'
@@ -55,6 +64,12 @@ interface ResizeState {
 }
 
 function Editor ({ id }: { id: string }) {
+  // Opt out of the React Compiler: this component bridges into the custom canvas
+  // reconciler by passing the scene (<MindMapScene/>) as `children` to <Canvas/>,
+  // which renders them in a *separate* reconciler root via an effect. The
+  // compiler can't reason about that bridge and its memoization drops the scene
+  // (blank canvas). Manual memo isn't needed here anyway.
+  'use no memo'
   const navigate = useNavigate()
   const doc = getMap(id)
 
@@ -233,35 +248,66 @@ function Editor ({ id }: { id: string }) {
   const rootNode = adjacency.get(0)
 
   return (
-    <div className="editor">
+    <div className="absolute inset-0">
       <ModalShortcuts visible={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <Toolbar
         left={
           <>
-            <button className="bgl-toolbar-button" title="Back" onClick={() => navigate({ to: '/' })}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M231.536 475.535l7.071-7.07c4.686-4.686 4.686-12.284 0-16.971L60.113 273H436c6.627 0 12-5.373 12-12v-10c0-6.627-5.373-12-12-12H60.113L238.607 60.506c4.686-4.686 4.686-12.284 0-16.971l-7.071-7.07c-4.686-4.686-12.284-4.686-16.97 0L3.515 247.515c-4.686 4.686-4.686 12.284 0 16.971l211.051 211.05c4.686 4.686 12.284 4.686 16.97-.001z" /></svg>
-            </button>
-            <div style={{ width: 1, height: 30, background: 'var(--border-light)', margin: '0 8px' }} />
-            {rootNode && <h1>{rootNode.name}</h1>}
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Back"
+              onClick={() => navigate({ to: '/' })}
+            >
+              <ArrowLeftIcon />
+            </Button>
+            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
+            {rootNode && (
+              <h1 className="truncate text-lg font-semibold">{rootNode.name}</h1>
+            )}
           </>
         }
         right={
           <>
-            <button className="bgl-toolbar-button" title="Save ^S" onClick={save}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M433.941 129.941l-83.882-83.882A48 48 0 0 0 316.118 32H48C21.49 32 0 53.49 0 80v352c0 26.51 21.49 48 48 48h352c26.51 0 48-21.49 48-48V163.882a48 48 0 0 0-14.059-33.941zM288 64v96H96V64h192zm128 368c0 8.822-7.178 16-16 16H48c-8.822 0-16-7.178-16-16V80c0-8.822 7.178-16 16-16h16v104c0 13.255 10.745 24 24 24h208c13.255 0 24-10.745 24-24V64.491a15.888 15.888 0 0 1 7.432 4.195l83.882 83.882A15.895 15.895 0 0 1 416 163.882V432z" /></svg>
-            </button>
-            <button className="bgl-toolbar-button" title="Download PNG (^⌥P)" onClick={savePng}>PNG</button>
-            <button className="bgl-toolbar-button" title="Download JPEG (^⌥J)" onClick={saveJpeg}>JPG</button>
-            <button className="bgl-toolbar-button" title="Download SVG (^⌥S)" onClick={saveSvg}>SVG</button>
-            <button className="bgl-toolbar-button" title="Keyboard shortcuts ^⌥H" onClick={() => setShortcutsOpen(true)}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path d="M528 64H48C21.49 64 0 85.49 0 112v288c0 26.51 21.49 48 48 48h480c26.51 0 48-21.49 48-48V112c0-26.51-21.49-48-48-48zm16 336c0 8.823-7.177 16-16 16H48c-8.823 0-16-7.177-16-16V112c0-8.823 7.177-16 16-16h480c8.823 0 16 7.177 16 16v288z" /></svg>
-            </button>
+            <Button variant="ghost" size="icon" title="Save ^S" onClick={save}>
+              <SaveIcon />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" title="Download">
+                  <DownloadIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={saveJpeg}>
+                  JPEG <span className="ml-auto text-muted-foreground">^⌥J</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={savePng}>
+                  PNG <span className="ml-auto text-muted-foreground">^⌥P</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={saveSvg}>
+                  SVG <span className="ml-auto text-muted-foreground">^⌥S</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Keyboard shortcuts ^⌥H"
+              onClick={() => setShortcutsOpen(true)}
+            >
+              <KeyboardIcon />
+            </Button>
           </>
         }
       />
-      <div className="content" ref={contentRef}>
+      <div
+        className="absolute inset-x-0 bottom-0 top-14 overflow-hidden bg-background"
+        ref={contentRef}
+      >
         <Canvas
           ref={canvasRef}
+          className="block"
           width={width}
           height={height}
           worldTransform={{ scale: viewport.scale, x: viewport.offsetX, y: viewport.offsetY }}

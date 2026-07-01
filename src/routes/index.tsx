@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Button, Divider, Empty, Input, Popover } from '@/ui'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover'
 import { MapItem } from '@/components/MapItem'
 import { Templates } from '@/components/Templates'
 import { FooterLogo } from '@/components/FooterLogo'
@@ -64,30 +71,32 @@ function Home () {
   }
 
   return (
-    <div className="home">
-      <div className="content">
+    <div>
+      <div className="mx-auto mt-6 mb-24 w-[960px] max-w-[calc(100vw-2rem)]">
         <div className="flex items-center">
-          <span style={{ fontSize: 48, marginRight: 12 }}>🧠</span>
-          <h1>Mind maps</h1>
+          <span className="mr-3 text-5xl">🧠</span>
+          <h1 className="text-5xl font-bold">Mind maps</h1>
         </div>
-        <Divider />
-        <div className="flex">
+        <Separator className="my-4" />
+        <div className="flex gap-2">
           <Input
+            className="flex-1"
             value={filterText}
-            onChange={setFilterText}
+            onChange={(e) => setFilterText(e.target.value)}
             placeholder="Find a map..."
           />
-          <Popover
-            content={<Templates templates={templates} onChoose={chooseTemplate} />}
-          >
-            <Button variant="primary" className="ml2">
-              New
-            </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button>New</Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-3" align="end">
+              <Templates templates={templates} onChoose={chooseTemplate} />
+            </PopoverContent>
           </Popover>
         </div>
-        <Divider />
+        <Separator className="my-4" />
         {maps.length > 0 ? (
-          <div className="maps">
+          <div className="flex flex-col">
             {filteredMaps.map((map) => (
               <MapItem
                 key={String(map.id)}
@@ -100,7 +109,10 @@ function Home () {
             ))}
           </div>
         ) : (
-          <Empty description="No maps yet — create one!" />
+          <div className="py-10 text-center text-muted-foreground">
+            <div className="text-4xl opacity-50">🗂️</div>
+            <div>No maps yet — create one!</div>
+          </div>
         )}
       </div>
       <FooterLogo />

@@ -50,7 +50,7 @@ export function TextEditorOverlay ({
 
   return (
     <div
-      className="node-editor-overlay"
+      className="absolute z-20"
       style={{ left, top, transform: `translate(-50%, -50%) scale(${scale})` }}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
@@ -72,11 +72,12 @@ export function TextEditorOverlay ({
         rows={1}
         value={node.name}
         style={{ width: node.width, height: node.height }}
+        className="box-border block min-h-[74px] min-w-[300px] resize-none rounded-md border-2 border-foreground bg-background pt-11 pr-2.5 pb-2.5 pl-2.5 text-sm leading-normal outline-none"
         onChange={(e) => onInput(e.target.value)}
         onClick={(e) => e.stopPropagation()}
       />
       <div
-        className="resizer"
+        className="absolute right-0.5 bottom-0.5 size-3.5 cursor-se-resize after:absolute after:right-1.5 after:bottom-0.5 after:h-2.5 after:w-0.5 after:rotate-45 after:bg-foreground after:content-[''] before:absolute before:right-1 before:bottom-0.5 before:h-1.5 before:w-0.5 before:rotate-45 before:bg-foreground before:content-['']"
         onMouseDown={(e) => {
           e.stopPropagation()
           e.preventDefault()

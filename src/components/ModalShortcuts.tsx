@@ -1,17 +1,35 @@
-import { Modal, Divider, Tag } from '@/ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 
 function Row ({ label, keys }: { label: string; keys: string[] }) {
   return (
     <>
-      <div className="flex justify-between">
-        <div className="left">{label}</div>
-        <div className="right">
+      <div className="flex items-center justify-between">
+        <div>{label}</div>
+        <div className="flex gap-1">
           {keys.map((k, i) => (
-            <Tag key={i}>{k}</Tag>
+            <Badge key={i} variant="secondary" className="font-mono">
+              {k}
+            </Badge>
           ))}
         </div>
       </div>
-      <Divider />
+      <Separator className="my-3" />
+    </>
+  )
+}
+
+function Section ({ title }: { title: string }) {
+  return (
+    <>
+      <h3 className="mt-6 font-semibold first:mt-0">{title}</h3>
+      <Separator className="my-3" />
     </>
   )
 }
@@ -24,28 +42,32 @@ export function ModalShortcuts ({
   onClose: () => void
 }) {
   return (
-    <Modal visible={visible} title="Keyboard shortcuts ^⌥H" onClose={onClose}>
-      <h3 style={{ fontWeight: 600 }}>Global</h3>
-      <Divider />
-      <Row label="Save" keys={['^', 'S']} />
-      <Row label="Close editing" keys={['⌥', 'Enter']} />
-      <Row label="Keyboard shortcuts" keys={['^', '⌥', 'H']} />
+    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[80vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle>Keyboard shortcuts ^⌥H</DialogTitle>
+        </DialogHeader>
 
-      <h3 style={{ fontWeight: 600, marginTop: 24 }}>Zoom</h3>
-      <Divider />
-      <Row label="Zoom in" keys={['^', 'Wheel up']} />
-      <Row label="Zoom out" keys={['^', 'Wheel down']} />
+        <div className="text-sm">
+          <Section title="Global" />
+          <Row label="Save" keys={['^', 'S']} />
+          <Row label="Close editing" keys={['⌥', 'Enter']} />
+          <Row label="Keyboard shortcuts" keys={['^', '⌥', 'H']} />
 
-      <h3 style={{ fontWeight: 600, marginTop: 24 }}>Branch controls</h3>
-      <Divider />
-      <Row label="Remove branch" keys={['⌘', 'Click ( on plus button )']} />
+          <Section title="Zoom" />
+          <Row label="Zoom in" keys={['^', 'Wheel up']} />
+          <Row label="Zoom out" keys={['^', 'Wheel down']} />
 
-      <h3 style={{ fontWeight: 600, marginTop: 24 }}>Pan</h3>
-      <Divider />
-      <Row label="Pan up" keys={['⌘', 'Wheel up']} />
-      <Row label="Pan down" keys={['⌘', 'Wheel down']} />
-      <Row label="Pan left" keys={['⌘', 'Wheel left']} />
-      <Row label="Pan right" keys={['⌘', 'Wheel right']} />
-    </Modal>
+          <Section title="Branch controls" />
+          <Row label="Remove branch" keys={['⌘', 'Click ( on plus button )']} />
+
+          <Section title="Pan" />
+          <Row label="Pan up" keys={['⌘', 'Wheel up']} />
+          <Row label="Pan down" keys={['⌘', 'Wheel down']} />
+          <Row label="Pan left" keys={['⌘', 'Wheel left']} />
+          <Row label="Pan right" keys={['⌘', 'Wheel right']} />
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
