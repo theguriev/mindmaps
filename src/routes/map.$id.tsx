@@ -39,6 +39,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { MindMapScene } from '@/components/MindMapScene'
+import { editorOverlayAnchor } from '@/components/NodeScene'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { EdgeEditor } from '@/components/EdgeEditor'
 import { Toolbar } from '@/components/Toolbar'
@@ -723,8 +724,9 @@ function Editor ({ id }: { id: string }) {
         {editingNode && (
           <TextEditorOverlay
             node={editingNode}
-            left={editingNode.x * viewport.scale + viewport.offsetX}
-            top={editingNode.y * viewport.scale + viewport.offsetY}
+            left={editorOverlayAnchor(editingNode).x * viewport.scale + viewport.offsetX}
+            top={editorOverlayAnchor(editingNode).y * viewport.scale + viewport.offsetY}
+            anchor={editorOverlayAnchor(editingNode).anchor}
             scale={viewport.scale}
             onInput={(value) => {
               // Snapshot the pre-typing state once, at the first keystroke.

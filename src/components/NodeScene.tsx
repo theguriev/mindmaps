@@ -33,6 +33,27 @@ function nodeTextOffset (
   }
 }
 
+/**
+ * Where the editing overlay should attach, in world space, and which edge of the
+ * overlay anchors there. A node connects to its branch at its point (node.x/y),
+ * so the overlay hangs off that point on the side the text grows: a left-side
+ * node (right-aligned text) anchors its right edge, a right-side node its left.
+ * The root is centred on its point; a sticky note is centred on its own box.
+ */
+export function editorOverlayAnchor (node: MindNode): {
+  x: number
+  y: number
+  anchor: 'left' | 'right' | 'center'
+} {
+  if (node.sticky) {
+    return { x: node.x + node.width / 2, y: node.y + node.height / 2, anchor: 'center' }
+  }
+  if (node.component === 'root') {
+    return { x: node.x, y: node.y, anchor: 'center' }
+  }
+  return { x: node.x, y: node.y, anchor: node.isRightSide ? 'left' : 'right' }
+}
+
 export interface NodeSceneProps {
   node: MindNode
   hovered: boolean

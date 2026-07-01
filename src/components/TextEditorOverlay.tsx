@@ -12,6 +12,7 @@ export function TextEditorOverlay ({
   left,
   top,
   scale = 1,
+  anchor = 'center',
   onInput,
   onStartResize
 }: {
@@ -19,9 +20,15 @@ export function TextEditorOverlay ({
   left: number
   top: number
   scale?: number
+  /** Which edge of the overlay sits on (left, top): the node's connection point. */
+  anchor?: 'left' | 'right' | 'center'
   onInput: (value: string) => void
   onStartResize: (node: MindNode, e: MouseEvent) => void
 }) {
+  // Anchor an edge of the overlay to (left, top). Matching the transform-origin
+  // to that edge keeps it pinned there at any zoom (scale is applied around it).
+  const originX = anchor === 'left' ? '0%' : anchor === 'right' ? '100%' : '50%'
+  const translateX = anchor === 'left' ? '0%' : anchor === 'right' ? '-100%' : '-50%'
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const toolbar = useMarkdownToolbar(textareaRef, onInput)
 
@@ -44,7 +51,12 @@ export function TextEditorOverlay ({
   return (
     <div
       className="absolute z-20"
-      style={{ left, top, transform: `translate(-50%, -50%) scale(${scale})` }}
+      style={{
+        left,
+        top,
+        transformOrigin: `${originX} center`,
+        transform: `translate(${translateX}, -50%) scale(${scale})`
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
