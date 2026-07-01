@@ -3,7 +3,7 @@
  * measured against a Canvas 2D context. No soft wrapping (nodes are nowrap):
  * width is the widest line, height is the stacked line heights.
  */
-import { parseBlocks } from './blocks'
+import { parseBlocks, type CellAlign } from './blocks'
 import type { InlineRun } from './inline'
 
 export interface MarkdownRun {
@@ -21,7 +21,13 @@ export interface MarkdownRun {
 }
 
 export interface MarkdownDecoration {
-  kind: 'quote-bar' | 'code-bg' | 'hr'
+  kind:
+    | 'quote-bar'
+    | 'code-bg'
+    | 'hr'
+    | 'table-cell'
+    | 'table-header'
+    | 'table-border'
   x: number
   y: number
   width: number
@@ -51,6 +57,9 @@ const MUTED_COLOR = '#6a737d'
 const CODE_BG = 'rgba(27,31,35,0.05)'
 const QUOTE_BAR = '#dfe2e5'
 const HR_COLOR = '#e1e4e8'
+const TABLE_BORDER = '#d0d7de'
+const TABLE_HEADER_BG = '#f6f8fa'
+const TABLE_ZEBRA_BG = '#f6f8fa'
 
 const BASE_SIZE = 16
 const BASE_LH = 1.5
@@ -70,6 +79,10 @@ const CODE_PAD_Y = 8
 const LIST_INDENT = 20
 const QUOTE_INDENT = 16
 const HR_HEIGHT = 20
+const CELL_PAD_X = 12
+const CELL_PAD_Y = 6
+const TABLE_BORDER_W = 1
+const TABLE_MIN_COL = 36
 
 function fontString (
   size: number,
@@ -91,6 +104,22 @@ interface DraftRun {
   codeBg: boolean
 }
 
+/** A table run/decoration is positioned relative to the table's own top-left;
+ *  the second layout pass offsets it by the table's line origin. */
+interface SubRun extends DraftRun {
+  relY: number
+  lineHeight: number
+  fontSize: number
+}
+interface SubDeco {
+  kind: MarkdownDecoration['kind']
+  relX: number
+  relY: number
+  width: number
+  height: number
+  color: string
+}
+
 interface DraftLine {
   runs: DraftRun[]
   width: number
@@ -98,6 +127,88 @@ interface DraftLine {
   lineHeight: number
   fontSize: number
   quote: boolean
+  /** Present only for table lines — a self-contained sub-layout. */
+  table?: { runs: SubRun[]; decorations: SubDeco[] }
+}
+
+/** Lay out a GFM table into runs + decorations relative to its own top-left. */
+function layoutTable (
+  ctx: CanvasRenderingContext2D,
+  rows: InlineRun[][][],
+  aligns: CellAlign[]
+): { width: number; height: number; runs: SubRun[]; decorations: SubDeco[] } {
+  const nCols = rows.reduce((m, r) => Math.max(m, r.length), 0)
+  if (nCols === 0) return { width: 0, height: 0, runs: [], decorations: [] }
+
+  const lineH = Math.round(BASE_SIZE * BASE_LH)
+  const rowH = lineH + CELL_PAD_Y * 2
+
+  // Measure every cell; track column widths and per-cell content widths.
+  const colW = new Array<number>(nCols).fill(TABLE_MIN_COL)
+  const cells: Array<Array<{ runs: DraftRun[]; width: number }>> = []
+  for (let r = 0; r < rows.length; r++) {
+    cells[r] = []
+    for (let c = 0; c < nCols; c++) {
+      const m = measureInline(ctx, rows[r][c] ?? [], BASE_SIZE, {
+        bold: r === 0
+      })
+      cells[r][c] = m
+      colW[c] = Math.max(colW[c], m.width + CELL_PAD_X * 2)
+    }
+  }
+
+  const colX: number[] = []
+  let cx = 0
+  for (let c = 0; c < nCols; c++) {
+    colX[c] = cx
+    cx += colW[c]
+  }
+  const width = cx
+  const height = rowH * rows.length
+
+  const runs: SubRun[] = []
+  const decorations: SubDeco[] = []
+
+  // Backgrounds: header row + zebra striping on alternate body rows.
+  decorations.push({ kind: 'table-header', relX: 0, relY: 0, width, height: rowH, color: TABLE_HEADER_BG })
+  for (let r = 1; r < rows.length; r++) {
+    if (r % 2 === 0) {
+      decorations.push({ kind: 'table-cell', relX: 0, relY: r * rowH, width, height: rowH, color: TABLE_ZEBRA_BG })
+    }
+  }
+
+  // Grid: horizontal + vertical borders (last one pulled inside the extent).
+  for (let r = 0; r <= rows.length; r++) {
+    const y = r === rows.length ? height - TABLE_BORDER_W : r * rowH
+    decorations.push({ kind: 'table-border', relX: 0, relY: y, width, height: TABLE_BORDER_W, color: TABLE_BORDER })
+  }
+  for (let c = 0; c <= nCols; c++) {
+    const x = c === nCols ? width - TABLE_BORDER_W : colX[c]
+    decorations.push({ kind: 'table-border', relX: x, relY: 0, width: TABLE_BORDER_W, height, color: TABLE_BORDER })
+  }
+
+  // Cell text, aligned within its column.
+  for (let r = 0; r < rows.length; r++) {
+    const relY = r * rowH + CELL_PAD_Y
+    for (let c = 0; c < nCols; c++) {
+      const cell = cells[r][c]
+      const align = aligns[c] ?? 'left'
+      let textX = colX[c] + CELL_PAD_X
+      if (align === 'center') textX = colX[c] + (colW[c] - cell.width) / 2
+      else if (align === 'right') textX = colX[c] + colW[c] - CELL_PAD_X - cell.width
+      for (const run of cell.runs) {
+        runs.push({
+          ...run,
+          relX: textX + run.relX,
+          relY,
+          lineHeight: lineH,
+          fontSize: BASE_SIZE
+        })
+      }
+    }
+  }
+
+  return { width, height, runs, decorations }
 }
 
 function runColor (r: InlineRun, headingLevel?: number, quote?: boolean): string {
@@ -111,13 +222,13 @@ function measureInline (
   ctx: CanvasRenderingContext2D,
   runs: InlineRun[],
   size: number,
-  opts: { heading?: number; quote?: boolean; startX?: number }
+  opts: { heading?: number; quote?: boolean; startX?: number; bold?: boolean }
 ): { runs: DraftRun[]; width: number } {
   const out: DraftRun[] = []
   let cursor = opts.startX ?? 0
   for (const r of runs) {
     const font = fontString(size, {
-      bold: r.style.bold,
+      bold: r.style.bold || opts.bold,
       italic: r.style.italic,
       heading: opts.heading !== undefined,
       mono: r.style.code
@@ -241,6 +352,19 @@ export function layoutMarkdown (
         codeRanges.push({ start, end: lines.length - 1 })
         break
       }
+      case 'table': {
+        const table = layoutTable(ctx, block.rows ?? [], block.aligns ?? [])
+        pushLine({
+          runs: [],
+          width: table.width,
+          height: table.height,
+          lineHeight: table.height,
+          fontSize: 0,
+          quote: false,
+          table
+        })
+        break
+      }
     }
   }
 
@@ -256,6 +380,38 @@ export function layoutMarkdown (
     const line = lines[idx]
     lineTops.push(y)
     const shift = align === 'right' ? layoutWidth - line.width : 0
+
+    // A table carries its own sub-layout; offset it by the line origin.
+    if (line.table) {
+      for (const d of line.table.decorations) {
+        decorations.push({
+          kind: d.kind,
+          x: d.relX + shift,
+          y: y + d.relY,
+          width: d.width,
+          height: d.height,
+          color: d.color
+        })
+      }
+      for (const r of line.table.runs) {
+        runs.push({
+          text: r.text,
+          font: r.font,
+          color: r.color,
+          x: r.relX + shift,
+          y: y + r.relY,
+          width: r.width,
+          lineHeight: r.lineHeight,
+          fontSize: r.fontSize,
+          underline: r.underline,
+          strike: r.strike,
+          codeBg: r.codeBg
+        })
+      }
+      y += line.height
+      continue
+    }
+
     const isCode = codeRanges.some((r) => idx >= r.start && idx <= r.end)
     const topPad = isCode && codeRanges.some((r) => r.start === idx) ? CODE_PAD_Y : 0
 

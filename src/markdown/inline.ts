@@ -20,6 +20,9 @@ export interface InlineRun {
   href?: string
 }
 
+/** Link reference definitions (`[label]: url`), keyed by lower-cased label. */
+export type LinkDefs = Map<string, string>
+
 const BASE: InlineStyle = {
   bold: false,
   italic: false,
@@ -32,7 +35,31 @@ interface Matcher {
   re: RegExp
   /** Higher wins when two matches start at the same index. */
   precedence: number
-  apply: (m: RegExpExecArray, style: InlineStyle, push: (runs: InlineRun[]) => void) => void
+  apply: (
+    m: RegExpExecArray,
+    style: InlineStyle,
+    push: (runs: InlineRun[]) => void,
+    defs: LinkDefs
+  ) => void
+}
+
+/** Emit `label`'s text as a link when it resolves, else the literal source. */
+function refLink (
+  m: RegExpExecArray,
+  label: string,
+  text: string,
+  style: InlineStyle,
+  push: (runs: InlineRun[]) => void,
+  defs: LinkDefs
+): void {
+  const href = defs.get(label.trim().toLowerCase())
+  if (!href) {
+    push([{ text: m[0], style }])
+    return
+  }
+  const inner = parseInlineWith(text, { ...style, link: true }, defs)
+  for (const r of inner) r.href = href
+  push(inner)
 }
 
 const MATCHERS: Matcher[] = [
@@ -44,48 +71,80 @@ const MATCHERS: Matcher[] = [
       push([{ text: m[1], style: { ...style, code: true } }])
   },
   {
+    // Autolink in angle brackets: <http://…> or <mailto:…>
+    re: /<((?:https?:\/\/|mailto:)[^>\s]+)>/,
+    precedence: 6,
+    apply: (m, style, push) =>
+      push([{ text: m[1], style: { ...style, link: true }, href: m[1] }])
+  },
+  {
+    // Bare URL autolink — stops before trailing sentence punctuation.
+    re: /https?:\/\/[^\s<]*[^\s<.,;:!?)\]}'"]/,
+    precedence: 6,
+    apply: (m, style, push) =>
+      push([{ text: m[0], style: { ...style, link: true }, href: m[0] }])
+  },
+  {
     // Link [text](href)
     re: /\[([^\]]*)\]\(([^)]+)\)/,
     precedence: 4,
-    apply: (m, style, push) => {
-      const inner = parseInlineWith(m[1], { ...style, link: true })
+    apply: (m, style, push, defs) => {
+      const inner = parseInlineWith(m[1], { ...style, link: true }, defs)
       for (const r of inner) r.href = m[2]
       push(inner)
     }
   },
   {
+    // Reference link: [text][label] or collapsed [text][] (label = text).
+    re: /\[([^\]]*)\]\[([^\]]*)\]/,
+    precedence: 4,
+    apply: (m, style, push, defs) =>
+      refLink(m, m[2] || m[1], m[1], style, push, defs)
+  },
+  {
     re: /\*\*([\s\S]+?)\*\*/,
     precedence: 3,
-    apply: (m, style, push) =>
-      push(parseInlineWith(m[1], { ...style, bold: true }))
+    apply: (m, style, push, defs) =>
+      push(parseInlineWith(m[1], { ...style, bold: true }, defs))
   },
   {
     re: /__([\s\S]+?)__/,
     precedence: 3,
-    apply: (m, style, push) =>
-      push(parseInlineWith(m[1], { ...style, bold: true }))
+    apply: (m, style, push, defs) =>
+      push(parseInlineWith(m[1], { ...style, bold: true }, defs))
   },
   {
     re: /~~([\s\S]+?)~~/,
     precedence: 2,
-    apply: (m, style, push) =>
-      push(parseInlineWith(m[1], { ...style, strike: true }))
+    apply: (m, style, push, defs) =>
+      push(parseInlineWith(m[1], { ...style, strike: true }, defs))
   },
   {
     re: /(?<![*\w])\*([^*\n]+?)\*(?!\*)/,
     precedence: 1,
-    apply: (m, style, push) =>
-      push(parseInlineWith(m[1], { ...style, italic: true }))
+    apply: (m, style, push, defs) =>
+      push(parseInlineWith(m[1], { ...style, italic: true }, defs))
   },
   {
     re: /(?<![_\w])_([^_\n]+?)_(?![_\w])/,
     precedence: 1,
-    apply: (m, style, push) =>
-      push(parseInlineWith(m[1], { ...style, italic: true }))
+    apply: (m, style, push, defs) =>
+      push(parseInlineWith(m[1], { ...style, italic: true }, defs))
+  },
+  {
+    // Shortcut reference link: [label] resolved against definitions (lowest
+    // precedence — inline and full reference links win at the same position).
+    re: /\[([^\]]+)\]/,
+    precedence: 0,
+    apply: (m, style, push, defs) => refLink(m, m[1], m[1], style, push, defs)
   }
 ]
 
-function parseInlineWith (text: string, style: InlineStyle): InlineRun[] {
+function parseInlineWith (
+  text: string,
+  style: InlineStyle,
+  defs: LinkDefs
+): InlineRun[] {
   if (text === '') return []
   const out: InlineRun[] = []
   const push = (runs: InlineRun[]) => {
@@ -111,13 +170,13 @@ function parseInlineWith (text: string, style: InlineStyle): InlineRun[] {
 
   const before = text.slice(0, best.index)
   if (before) out.push({ text: before, style })
-  best.matcher.apply(best.m, style, push)
+  best.matcher.apply(best.m, style, push, defs)
   const after = text.slice(best.index + best.m[0].length)
-  if (after) push(parseInlineWith(after, style))
+  if (after) push(parseInlineWith(after, style, defs))
 
   return out
 }
 
-export function parseInline (text: string): InlineRun[] {
-  return parseInlineWith(text, { ...BASE })
+export function parseInline (text: string, defs: LinkDefs = new Map()): InlineRun[] {
+  return parseInlineWith(text, { ...BASE }, defs)
 }

@@ -26,4 +26,45 @@ describe('parseInline', () => {
   it('returns nothing for an empty string', () => {
     expect(parseInline('')).toEqual([])
   })
+
+  it('resolves reference-style links (case-insensitive) against definitions', () => {
+    const defs = new Map([['ref one', 'http://a'], ['1', 'http://b']])
+    const full = parseInline("[I'm a ref][Ref One]", defs)
+    expect(full.some((r) => r.style.link && r.href === 'http://a')).toBe(true)
+    expect(full.map((r) => r.text).join('')).toBe("I'm a ref")
+
+    const numbered = parseInline('[see][1]', defs)
+    expect(numbered.some((r) => r.style.link && r.href === 'http://b')).toBe(true)
+  })
+
+  it('resolves collapsed and shortcut reference links', () => {
+    const defs = new Map([['link text itself', 'mailto:x@y.z']])
+    const shortcut = parseInline('use the [link text itself].', defs)
+    expect(
+      shortcut.some((r) => r.style.link && r.text === 'link text itself' && r.href === 'mailto:x@y.z')
+    ).toBe(true)
+    // The trailing period stays plain text outside the link.
+    expect(shortcut.map((r) => r.text).join('')).toBe('use the link text itself.')
+
+    const collapsed = parseInline('[link text itself][]', defs)
+    expect(collapsed.some((r) => r.style.link && r.href === 'mailto:x@y.z')).toBe(true)
+  })
+
+  it('leaves an unresolved reference as literal bracketed text', () => {
+    const runs = parseInline('[not defined][nope]')
+    expect(runs.map((r) => r.text).join('')).toBe('[not defined][nope]')
+    expect(runs.every((r) => !r.style.link)).toBe(true)
+  })
+
+  it('autolinks bare and angle-bracketed URLs, trimming trailing punctuation', () => {
+    const bare = parseInline('see http://www.beagl.in.')
+    expect(
+      bare.some((r) => r.style.link && r.href === 'http://www.beagl.in')
+    ).toBe(true)
+    // Trailing period is not part of the link.
+    expect(bare.map((r) => r.text).join('')).toBe('see http://www.beagl.in.')
+
+    const angle = parseInline('<https://x.y>')
+    expect(angle.some((r) => r.style.link && r.href === 'https://x.y')).toBe(true)
+  })
 })

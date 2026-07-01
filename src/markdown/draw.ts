@@ -19,9 +19,8 @@ export function drawMarkdownLayout (
     if (d.kind === 'code-bg') {
       roundRect(ctx, d.x, d.y, d.width, d.height, 3)
       ctx.fill()
-    } else if (d.kind === 'quote-bar') {
-      ctx.fillRect(d.x, d.y, d.width, d.height)
-    } else if (d.kind === 'hr') {
+    } else {
+      // quote-bar, hr, table borders/backgrounds — plain filled rectangles.
       ctx.fillRect(d.x, d.y, d.width, d.height)
     }
   }
