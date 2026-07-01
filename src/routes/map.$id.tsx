@@ -81,6 +81,8 @@ interface ResizeState {
   startH: number
   startClientX: number
   startClientY: number
+  signX: number
+  signY: number
 }
 interface MarqueeState {
   startX: number
@@ -389,8 +391,8 @@ function Editor ({ id }: { id: string }) {
       const node = list.get(r.id)
       if (!node) return
       const scale = viewport.scaleRef.current
-      const width2 = Math.max(50, r.startW + (event.clientX - r.startClientX) / scale)
-      const height2 = Math.max(32, r.startH + (event.clientY - r.startClientY) / scale)
+      const width2 = Math.max(50, r.startW + (r.signX * (event.clientX - r.startClientX)) / scale)
+      const height2 = Math.max(32, r.startH + (r.signY * (event.clientY - r.startClientY)) / scale)
       recordMove()
       update({ ...node, width: width2, height: height2 })
     }
@@ -428,14 +430,20 @@ function Editor ({ id }: { id: string }) {
     if (color.visible) closeColor()
   })
 
-  const onStartResize = (node: MindNode, e: MouseEvent) => {
+  const onStartResize = (
+    node: MindNode,
+    e: MouseEvent,
+    dir: { signX: number; signY: number }
+  ) => {
     moveSnapRef.current = adjacency
     resizeRef.current = {
       id: node.id,
       startW: node.width,
       startH: node.height,
       startClientX: e.clientX,
-      startClientY: e.clientY
+      startClientY: e.clientY,
+      signX: dir.signX,
+      signY: dir.signY
     }
   }
 
