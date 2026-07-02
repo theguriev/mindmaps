@@ -126,10 +126,12 @@ function paintTriangle (ctx: CanvasRenderingContext2D, p: TriangleProps): void {
   const tip = p.pointRight ? half : -half
   ctx.save()
   ctx.translate(p.x ?? 0, p.y ?? 0)
+  if (p.rotation) ctx.rotate(p.rotation)
   ctx.beginPath()
   ctx.moveTo(0, -half)
   ctx.lineTo(tip, 0)
   ctx.lineTo(0, half)
+  if (p.notch) ctx.lineTo(tip * p.notch, 0)
   ctx.closePath()
   if (p.fill) {
     ctx.fillStyle = p.fill

@@ -104,10 +104,12 @@ function bezierToSvg (p: BezierProps): string {
 function triangleToSvg (p: TriangleProps): string {
   const half = p.size / 2
   const tip = p.pointRight ? half : -half
-  const d = `M 0 ${n(-half)} L ${n(tip)} 0 L 0 ${n(half)} Z`
+  const notch = p.notch ? ` L ${n(tip * p.notch)} 0` : ''
+  const d = `M 0 ${n(-half)} L ${n(tip)} 0 L 0 ${n(half)}${notch} Z`
   const fill = p.fill ? `fill="${p.fill}"` : 'fill="none"'
   const stroke = p.stroke ? ` stroke="${p.stroke}"` : ''
-  return `<path d="${d}"${stroke} ${fill} transform="translate(${n(p.x ?? 0)}, ${n(p.y ?? 0)})"/>`
+  const rot = p.rotation ? ` rotate(${n((p.rotation * 180) / Math.PI)})` : ''
+  return `<path d="${d}"${stroke} ${fill} transform="translate(${n(p.x ?? 0)}, ${n(p.y ?? 0)})${rot}"/>`
 }
 
 function plusToSvg (p: PlusIconProps): string {

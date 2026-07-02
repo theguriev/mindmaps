@@ -1,6 +1,6 @@
 import type { MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import type { PointerPayload } from '@/renderer/types'
-import { EdgeScene } from './EdgeScene'
+import { EdgeScene, EdgeArrow } from './EdgeScene'
 import { NodeScene } from './NodeScene'
 
 /**
@@ -42,6 +42,9 @@ export function MindMapScene ({
     <group x={offsetX} y={offsetY} scale={scale}>
       {Array.from(paths.values()).map((edge) => (
         <EdgeScene key={edge.id} edge={edge} onColor={onColor} />
+      ))}
+      {Array.from(paths.values()).map((edge) => (
+        <EdgeArrow key={`a-${edge.id}`} edge={edge} />
       ))}
       {Array.from(list.values()).map((node) => (
         <NodeScene

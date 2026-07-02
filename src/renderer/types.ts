@@ -93,6 +93,10 @@ export interface TriangleProps extends InteractiveProps {
   size: number
   /** true → apex points right, false → apex points left. */
   pointRight: boolean
+  /** 0 → plain triangle; >0 cuts a V into the base, making a chevron/arrowhead. */
+  notch?: number
+  /** Rotation in radians (applied around x/y), e.g. to align with a curve. */
+  rotation?: number
   fill?: string
   stroke?: string
   strokeWidth?: number
