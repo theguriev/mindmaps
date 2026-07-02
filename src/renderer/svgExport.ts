@@ -14,6 +14,7 @@ import type {
   TriangleProps
 } from './types'
 import type { MarkdownLayout } from '@/markdown/layout'
+import { bezierNotch, bezierTip } from './geometryUtils'
 
 function esc (s: string): string {
   return s
@@ -27,12 +28,16 @@ function n (v: number): string {
   return Number.isFinite(v) ? String(Math.round(v * 100) / 100) : '0'
 }
 
+/** Counter for unique clipPath ids (branch-start notches); reset per export. */
+let clipSeq = 0
+
 export function sceneToSvg (
   root: SceneNode,
   width: number,
   height: number,
   background = '#ffffff'
 ): string {
+  clipSeq = 0
   const body = root.children.map(nodeToSvg).join('')
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(width)}" height="${n(height)}" ` +
@@ -96,9 +101,37 @@ function discToSvg (p: DiscProps): string {
 
 function bezierToSvg (p: BezierProps): string {
   const w = p.strokeWidth ?? 1
+  const stroke = p.stroke ?? '#000'
   const d = `M ${n(p.x1)} ${n(p.y1)} C ${n(p.cx1)} ${n(p.cy1)} ${n(p.cx2)} ${n(p.cy2)} ${n(p.x2)} ${n(p.y2)}`
   const dash = p.dash ? ` stroke-dasharray="${n(w * 1.6)} ${n(w * 1.6)}"` : ''
-  return `<path d="${d}" fill="none" stroke="${p.stroke ?? '#000'}" stroke-width="${w}" stroke-linecap="${p.dash ? 'butt' : 'round'}"${dash}/>`
+  let curve = `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="butt"${dash}/>`
+  if ((p.notchDepth ?? 0) > 0) {
+    // Same wedge cut the canvas painter clips out: clip to a rect around the
+    // whole curve minus the notch polygon (evenodd), so the background shows
+    // through the branch's start.
+    const pts = bezierNotch(p)
+    const pad = w * 2 + (p.tipLength ?? 0)
+    const minX = Math.min(p.x1, p.cx1, p.cx2, p.x2) - pad
+    const minY = Math.min(p.y1, p.cy1, p.cy2, p.y2) - pad
+    const maxX = Math.max(p.x1, p.cx1, p.cx2, p.x2) + pad
+    const maxY = Math.max(p.y1, p.cy1, p.cy2, p.y2) + pad
+    const id = `branch-notch-${clipSeq++}`
+    let wedge = `M ${n(pts[0])} ${n(pts[1])}`
+    for (let i = 2; i < pts.length; i += 2) {
+      wedge += ` L ${n(pts[i])} ${n(pts[i + 1])}`
+    }
+    const outline =
+      `M ${n(minX)} ${n(minY)} H ${n(maxX)} V ${n(maxY)} H ${n(minX)} Z ` +
+      `${wedge} Z`
+    curve =
+      `<clipPath id="${id}"><path clip-rule="evenodd" d="${outline}"/></clipPath>` +
+      `<g clip-path="url(#${id})">${curve}</g>`
+  }
+  if ((p.tipLength ?? 0) > 0) {
+    const [ax, ay, tx, ty, bx, by] = bezierTip(p)
+    curve += `<path d="M ${n(ax)} ${n(ay)} L ${n(tx)} ${n(ty)} L ${n(bx)} ${n(by)} Z" fill="${stroke}"/>`
+  }
+  return curve
 }
 
 function triangleToSvg (p: TriangleProps): string {

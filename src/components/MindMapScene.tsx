@@ -1,6 +1,6 @@
 import type { MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import type { PointerPayload } from '@/renderer/types'
-import { EdgeScene, EdgeArrow } from './EdgeScene'
+import { EdgeScene } from './EdgeScene'
 import { NodeScene } from './NodeScene'
 
 /**
@@ -38,13 +38,28 @@ export function MindMapScene ({
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
 }) {
+  // Junction axis per node: the end tangent of the edge arriving at it. Every
+  // edge leaving a node cuts its start notch along this shared axis, so the
+  // siblings' cut-outs coincide and the parent's tip nests into one clean V.
+  const junctionDir = new Map<NodeId, { x: number; y: number }>()
+  for (const edge of paths.values()) {
+    let dx = edge.x4 - edge.x3
+    let dy = edge.y4 - edge.y3
+    if (Math.hypot(dx, dy) < 0.01) {
+      dx = edge.x4 - edge.x
+      dy = edge.y4 - edge.y
+    }
+    junctionDir.set(edge.toID, { x: dx, y: dy })
+  }
   return (
     <group x={offsetX} y={offsetY} scale={scale}>
       {Array.from(paths.values()).map((edge) => (
-        <EdgeScene key={edge.id} edge={edge} onColor={onColor} />
-      ))}
-      {Array.from(paths.values()).map((edge) => (
-        <EdgeArrow key={`a-${edge.id}`} edge={edge} />
+        <EdgeScene
+          key={edge.id}
+          edge={edge}
+          junction={junctionDir.get(edge.fromID)}
+          onColor={onColor}
+        />
       ))}
       {Array.from(list.values()).map((node) => (
         <NodeScene

@@ -14,6 +14,7 @@ import type {
   TriangleProps
 } from './types'
 import { drawMarkdownLayout, roundRect } from '@/markdown/draw'
+import { bezierNotch, bezierTip } from './geometryUtils'
 
 export function paintScene (
   ctx: CanvasRenderingContext2D,
@@ -110,15 +111,50 @@ function paintDisc (ctx: CanvasRenderingContext2D, p: DiscProps): void {
 
 function paintBezier (ctx: CanvasRenderingContext2D, p: BezierProps): void {
   const width = p.strokeWidth ?? 1
+  const notched = (p.notchDepth ?? 0) > 0
+  if (notched) {
+    // Carve the notch out of the start by clipping to everything except the
+    // wedge (evenodd: rect around the whole curve minus the wedge polygon).
+    // The background shows through the cut — no white paint on top — so a
+    // parent branch's sharpened tip can nest inside it.
+    const pts = bezierNotch(p)
+    const pad = width * 2 + (p.tipLength ?? 0)
+    const minX = Math.min(p.x1, p.cx1, p.cx2, p.x2) - pad
+    const minY = Math.min(p.y1, p.cy1, p.cy2, p.y2) - pad
+    const maxX = Math.max(p.x1, p.cx1, p.cx2, p.x2) + pad
+    const maxY = Math.max(p.y1, p.cy1, p.cy2, p.y2) + pad
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(minX, minY, maxX - minX, maxY - minY)
+    ctx.moveTo(pts[0], pts[1])
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1])
+    ctx.closePath()
+    ctx.clip('evenodd')
+  }
   ctx.beginPath()
   ctx.moveTo(p.x1, p.y1)
   ctx.bezierCurveTo(p.cx1, p.cy1, p.cx2, p.cy2, p.x2, p.y2)
   ctx.strokeStyle = p.stroke ?? '#000'
   ctx.lineWidth = width
-  ctx.lineCap = p.dash ? 'butt' : 'round'
+  // Butt caps: a round cap at the start of a branch would bulge back over the
+  // parent branch (visible when the two branches are different colours). Ends
+  // are covered by the sharpened tip / node boxes anyway.
+  ctx.lineCap = 'butt'
   ctx.setLineDash(p.dash ? [width * 1.6, width * 1.6] : [])
   ctx.stroke()
   ctx.setLineDash([])
+  if (notched) ctx.restore()
+  if ((p.tipLength ?? 0) > 0) {
+    // Sharpen the end into a point continuing the stroke's own colour.
+    const [ax, ay, tx, ty, bx, by] = bezierTip(p)
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(tx, ty)
+    ctx.lineTo(bx, by)
+    ctx.closePath()
+    ctx.fillStyle = p.stroke ?? '#000'
+    ctx.fill()
+  }
 }
 
 function paintTriangle (ctx: CanvasRenderingContext2D, p: TriangleProps): void {

@@ -81,6 +81,18 @@ export interface BezierProps extends InteractiveProps {
   strokeWidth?: number
   /** Render as a dashed line. */
   dash?: boolean
+  /** Sharpen the end into a tangent-aligned point extending this many px past
+   *  (x2,y2) — the "arrow" a child branch's notch wraps around. */
+  tipLength?: number
+  /** Cut a V of this depth into the start butt, letting the background show
+   *  through, so a parent branch's tip can nest inside it. */
+  notchDepth?: number
+  /** Direction (not necessarily unit) the notch is cut along — the junction
+   *  axis, i.e. the parent branch's end tangent. Siblings sharing one junction
+   *  must share this axis so their notch cut-outs coincide; otherwise one
+   *  sibling's stroke covers another's notch. Defaults to the start tangent. */
+  notchDirX?: number
+  notchDirY?: number
   /** Extra world-space radius added to the stroke for easier clicking. */
   hitPadding?: number
 }
