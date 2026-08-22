@@ -18,6 +18,19 @@ function isNodeId (value: unknown): value is NodeId {
   return typeof value === 'string' || typeof value === 'number'
 }
 
+/**
+ * Whether a value is a colour worth storing.
+ *
+ * Mirrors `is_color()` in `document.php`, and exists for the same reason: the
+ * colour is written into an SVG attribute by the exporter, so a string that
+ * can close one has no business being stored. The hex forms the editor emits,
+ * or a bare CSS keyword like `black` — the default the branch geometry falls
+ * back to. Anything else is dropped and the branch takes its default colour.
+ */
+function isColor (value: unknown): value is string {
+  return typeof value === 'string' && /^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|[a-z]{1,20})$/i.test(value)
+}
+
 function parseNode (value: unknown): RawNode | null {
   if (typeof value !== 'object' || value === null) return null
   const raw = value as Record<string, unknown>
@@ -31,7 +44,7 @@ function parseNode (value: unknown): RawNode | null {
   }
   if (isNodeId(raw.id)) node.id = raw.id
   if (isNodeId(raw.parent)) node.parent = raw.parent
-  if (typeof raw.stroke === 'string') node.stroke = raw.stroke
+  if (isColor(raw.stroke)) node.stroke = raw.stroke
   if (Number.isFinite(raw.strokeWidth)) node.strokeWidth = raw.strokeWidth as number
   if (raw.lineStyle === 'solid' || raw.lineStyle === 'dashed') node.lineStyle = raw.lineStyle
   if (raw.lineShape === 'straight' || raw.lineShape === 'smooth') node.lineShape = raw.lineShape

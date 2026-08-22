@@ -3,6 +3,14 @@ import { LoaderCircleIcon, StarIcon, Trash2Icon } from 'lucide-react'
 import { MapThumb } from './MapThumb'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from './ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { cn } from '../lib/utils'
 import { fromNow } from '../utils/relativeTime'
@@ -53,6 +61,7 @@ export function MapItem ({
 }: MapItemProps) {
   const [loading, setLoading] = useState(false)
   const [starLoading, setStarLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const isTemplate = (map.meta?.template ?? '0')[0] === '1'
   const starLabel = isTemplate ? 'Make it a map' : 'Make it a template'
   const nodes = map.nodes
@@ -149,16 +158,46 @@ export function MapItem ({
                   disabled={loading}
                   aria-label="Remove map"
                   className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => {
-                    setLoading(true)
-                    onRemove(map, () => setLoading(false))
-                  }}
+                  onClick={() => setConfirming(true)}
                 >
                   {loading ? <LoaderCircleIcon className="animate-spin" /> : <Trash2Icon />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Remove map</TooltipContent>
             </Tooltip>
+            {/* Deleting a map is permanent — there is no trash to fish it back
+                out of, and an export is a picture rather than a map. The bin
+                sits a few pixels from the star, and on a touch screen both are
+                permanently visible, so the only thing between a stray tap and
+                somebody's work is this dialog. */}
+            <Dialog open={confirming} onOpenChange={setConfirming}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Delete “{map.title || UNTITLED}”?</DialogTitle>
+                  <DialogDescription>
+                    {nodes === 1
+                      ? 'Its single node goes with it. '
+                      : `All ${nodes} of its nodes go with it. `}
+                    This cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setConfirming(false)}>
+                    Keep it
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setConfirming(false)
+                      setLoading(true)
+                      onRemove(map, () => setLoading(false))
+                    }}
+                  >
+                    Delete map
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
       </div>

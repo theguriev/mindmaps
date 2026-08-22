@@ -701,4 +701,70 @@ final class DocumentTest extends TestCase {
 
 		$this->assertSame( to_wire( $original ), to_wire( (array) $reparse ) );
 	}
+
+	/**
+	 * @dataProvider provide_storable_colors
+	 *
+	 * @param string $color A colour the editor emits.
+	 */
+	public function test_a_node_keeps_a_colour_it_could_have_drawn( string $color ): void {
+		$doc = parse_document(
+			array(
+				'id'      => '1',
+				'title'   => 'T',
+				'content' => array( array( 'a', array( 'name' => 'n', 'x' => 0, 'y' => 0, 'stroke' => $color ) ) ),
+			),
+			'1'
+		);
+
+		$this->assertSame( $color, $doc['content'][0][1]['stroke'] );
+	}
+
+	/**
+	 * @return array<string, array{string}>
+	 */
+	public static function provide_storable_colors(): array {
+		return array(
+			'short hex'   => array( '#fff' ),
+			'short alpha' => array( '#ffff' ),
+			'long hex'    => array( '#00ff00' ),
+			'long alpha'  => array( '#00ff0080' ),
+			'keyword'     => array( 'black' ),
+		);
+	}
+
+	/**
+	 * @dataProvider provide_unstorable_colors
+	 *
+	 * @param mixed $color A colour that is not one.
+	 */
+	public function test_a_colour_that_could_close_an_attribute_is_dropped( mixed $color ): void {
+		// The exporter writes this into an SVG attribute, so a string that can
+		// end one must not reach storage. The node survives without it.
+		$doc = parse_document(
+			array(
+				'id'      => '1',
+				'title'   => 'T',
+				'content' => array( array( 'a', array( 'name' => 'n', 'x' => 0, 'y' => 0, 'stroke' => $color ) ) ),
+			),
+			'1'
+		);
+
+		$this->assertCount( 1, $doc['content'] );
+		$this->assertArrayNotHasKey( 'stroke', $doc['content'][0][1] );
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function provide_unstorable_colors(): array {
+		return array(
+			'markup'    => array( '#000" /><script>alert(1)</script><path d="' ),
+			'a rule'    => array( 'red;background:url(x)' ),
+			'a url'     => array( 'url(#x)' ),
+			'functional'=> array( 'rgb(0,0,0)' ),
+			'a number'  => array( 42 ),
+			'null'      => array( null ),
+		);
+	}
 }

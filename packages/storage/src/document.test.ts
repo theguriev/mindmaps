@@ -187,3 +187,32 @@ describe('parseMapSummary', () => {
     expect(parseMapSummary({}, 'fallback')?.id).toBe('fallback')
   })
 })
+
+describe('the stroke colour', () => {
+  const node = (stroke: unknown) => ({ name: 'n', x: 0, y: 0, stroke })
+
+  it('keeps the shapes the editor emits', () => {
+    for (const colour of ['#fff', '#ffff', '#00ff00', '#00ff0080', 'black', 'currentColor']) {
+      const parsed = parseContent([['a', node(colour)]])
+      expect(parsed?.[0][1].stroke, colour).toBe(colour)
+    }
+  })
+
+  it('drops anything that could close an SVG attribute', () => {
+    // The colour is written into an attribute by the exporter, so a string
+    // that can end one has no business being stored. The node survives; it
+    // just takes its default colour.
+    for (const colour of [
+      '#000" /><script>alert(1)</script><path d="',
+      'red;background:url(x)',
+      'url(#x)',
+      'rgb(0,0,0)',
+      42,
+      null
+    ]) {
+      const parsed = parseContent([['a', node(colour)]])
+      expect(parsed, String(colour)).toHaveLength(1)
+      expect(parsed?.[0][1].stroke, String(colour)).toBeUndefined()
+    }
+  })
+})
