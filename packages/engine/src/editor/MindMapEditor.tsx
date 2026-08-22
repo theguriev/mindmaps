@@ -204,6 +204,11 @@ export interface MindMapEditorProps {
   /** Back affordance. Omitted (e.g. embedded in a WordPress page) → no button
    *  and no "Back to maps" command. */
   onBack?: () => void
+  /** Present the map without letting the viewer change it: no creation, edit,
+   *  delete, move, resize, paste, reaction or branch-style affordances, and no
+   *  save. Navigation stays fully available — pan, zoom, select, search, copy,
+   *  export, and folding (which is local only, since nothing is persisted). */
+  readOnly?: boolean
   /** Host-specific entries appended to the ⌘K palette. */
   extraCommands?: MenuCommand[]
   /** Class for the editor's root element. Defaults to filling its offset
@@ -222,6 +227,7 @@ export function MindMapEditor ({
   doc,
   onSave,
   onBack,
+  readOnly = false,
   extraCommands,
   className = 'absolute inset-0'
 }: MindMapEditorProps) {
@@ -336,6 +342,7 @@ export function MindMapEditor ({
 
   // ---- Scene interaction handlers ----
   const onColor = (edge: PathEdge, e: PointerPayload) => {
+    if (readOnly) return
     // Stop this click from reaching the window-level close handler below.
     e.originalEvent.stopPropagation()
     pathClick(edge, e.originalEvent.clientX, e.originalEvent.clientY)
@@ -343,6 +350,20 @@ export function MindMapEditor ({
 
   const onDragStart = (node: MindNode, e: PointerPayload) => {
     closeEditingIfAny()
+    // Read-only still selects (for copy / zoom-to-node), it just never drags.
+    if (readOnly) {
+      setSelectedIds(
+        e.originalEvent.shiftKey
+          ? (prev) => {
+              const next = new Set(prev)
+              if (next.has(node.id)) next.delete(node.id)
+              else next.add(node.id)
+              return next
+            }
+          : new Set([node.id])
+      )
+      return
+    }
     // Shift-click toggles a node in/out of the selection (no drag).
     if (e.originalEvent.shiftKey) {
       setSelectedIds((prev) => {
@@ -377,11 +398,13 @@ export function MindMapEditor ({
   }
 
   const onEdit = (node: MindNode) => {
+    if (readOnly) return
     editDirtyRef.current = false
     setEditing(node.id)
   }
 
   const onAdd = (node: MindNode) => {
+    if (readOnly) return
     if (node.component === 'root') {
       add(node.id, 0)
     } else {
@@ -389,7 +412,10 @@ export function MindMapEditor ({
     }
   }
 
-  const onRemove = (nodeId: NodeId) => remove(nodeId)
+  const onRemove = (nodeId: NodeId) => {
+    if (readOnly) return
+    remove(nodeId)
+  }
 
   // Jump to a search hit: unfold whatever hides it, select it and centre on it.
   const jumpToNode = (nodeId: NodeId) => {
@@ -402,6 +428,7 @@ export function MindMapEditor ({
   // Clone the selected branches (fresh ids, +24/+24, same parents) and select
   // the clones. One undo step.
   const duplicateSelection = () => {
+    if (readOnly) return
     const roots = selectionRoots(list, visibleSelectedIds)
     if (roots.length === 0) return
     const clip = collectBranches(adjacency, roots)
@@ -434,6 +461,7 @@ export function MindMapEditor ({
 
   // Attach a sticky note to the active node (or the root) and edit it right away.
   const onAddSticky = () => {
+    if (readOnly) return
     const newId = addSticky(activeId ?? 0)
     setSelectedIds(new Set([newId]))
     setEditing(newId)
@@ -443,6 +471,7 @@ export function MindMapEditor ({
 
   // Add a fresh, parentless root node at the centre of the current view.
   const onAddRoot = () => {
+    if (readOnly) return
     const cx = (width / 2 - viewport.offsetX) / viewport.scale
     const cy = (height / 2 - viewport.offsetY) / viewport.scale
     const roots = Array.from(list.values()).filter((n) => n.parent === undefined).length
@@ -614,6 +643,7 @@ export function MindMapEditor ({
   useEvent<ClipboardEvent>('copy', copySelection)
 
   useEvent<ClipboardEvent>('cut', (event) => {
+    if (readOnly) return
     const copied = copySelection(event)
     if (copied.length === 0) return
     // Like Delete: drop the primary root first so it can't mask its (deletable)
@@ -628,7 +658,7 @@ export function MindMapEditor ({
   })
 
   useEvent<ClipboardEvent>('paste', (event) => {
-    if (editingNode || isEditableTarget(event.target)) return
+    if (readOnly || editingNode || isEditableTarget(event.target)) return
     const cd = event.clipboardData
     if (!cd) return
     const target = activeId != null ? list.get(activeId) : undefined
@@ -711,6 +741,7 @@ export function MindMapEditor ({
   // REST backend); the toolbar shows the in-flight/failed state so a slow or
   // rejected save is never silent.
   const save = () => {
+    if (readOnly) return
     const root = adjacency.get(0)
     const next: MapDoc = {
       ...doc,
@@ -792,7 +823,7 @@ export function MindMapEditor ({
       return
     }
     // ⌘Z / ⌘⇧Z — undo / redo (the textarea keeps its native undo while editing)
-    if (event.metaKey && event.code === 'KeyZ' && !editing) {
+    if (event.metaKey && event.code === 'KeyZ' && !editing && !readOnly) {
       event.preventDefault()
       if (event.shiftKey) redo()
       else undo()
@@ -818,7 +849,7 @@ export function MindMapEditor ({
       return
     }
     // ⌘D — duplicate the selected branches next to the originals
-    if (event.metaKey && !event.shiftKey && event.code === 'KeyD' && !editing) {
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyD' && !editing && !readOnly) {
       event.preventDefault()
       duplicateSelection()
       return
@@ -843,10 +874,12 @@ export function MindMapEditor ({
       return
     }
     // Node operations — act on the active node, not while typing, no ⌘/Ctrl/Alt.
+    // The mutating ones (delete, add) are additionally gated on `readOnly`;
+    // arrow navigation below stays available to a viewer.
     if (!editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
       // Delete / Backspace — remove every selected node (never the root).
       // Drop the root first so it can't mask its (deletable) descendants.
-      if (event.code === 'Delete' || event.code === 'Backspace') {
+      if (!readOnly && (event.code === 'Delete' || event.code === 'Backspace')) {
         const deletable = new Set(visibleSelectedIds)
         deletable.delete(0)
         const roots = selectionRoots(list, deletable)
@@ -858,7 +891,7 @@ export function MindMapEditor ({
         return
       }
       // Tab — add a child to the active node and start editing it.
-      if (event.code === 'Tab') {
+      if (!readOnly && event.code === 'Tab') {
         event.preventDefault()
         if (activeId != null) {
           const n = list.get(activeId)
@@ -874,7 +907,7 @@ export function MindMapEditor ({
         return
       }
       // Enter — add a sibling (a child of the active node's parent) and edit it.
-      if (event.code === 'Enter' && !event.shiftKey) {
+      if (!readOnly && event.code === 'Enter' && !event.shiftKey) {
         event.preventDefault()
         if (activeId != null) {
           const n = list.get(activeId)
@@ -934,9 +967,26 @@ export function MindMapEditor ({
 
   const rootNode = adjacency.get(0)
 
+  // A read-only embed lists only what a viewer can actually do.
+  const editCommands: MenuCommand[] = readOnly
+    ? []
+    : [
+        { group: 'Create', label: 'Add root node', icon: PlusIcon, run: onAddRoot },
+        { group: 'Create', label: 'Add sticky note', icon: StickyNoteIcon, run: onAddSticky },
+        {
+          group: 'Edit',
+          label: 'Duplicate branch',
+          shortcut: '⌘D',
+          icon: CopyIcon,
+          run: duplicateSelection
+        },
+        { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
+        { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
+        { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save }
+      ]
+
   const commands: MenuCommand[] = [
-    { group: 'Create', label: 'Add root node', icon: PlusIcon, run: onAddRoot },
-    { group: 'Create', label: 'Add sticky note', icon: StickyNoteIcon, run: onAddSticky },
+    ...editCommands,
     { group: 'View', label: 'Zoom in', shortcut: '+', icon: ZoomInIcon, run: viewport.zoomIn },
     { group: 'View', label: 'Zoom out', shortcut: '−', icon: ZoomOutIcon, run: viewport.zoomOut },
     { group: 'View', label: 'Zoom to 100%', shortcut: '⇧0', run: viewport.zoomTo100 },
@@ -951,16 +1001,6 @@ export function MindMapEditor ({
         if (n) onToggleCollapsed(n)
       }
     },
-    {
-      group: 'Edit',
-      label: 'Duplicate branch',
-      shortcut: '⌘D',
-      icon: CopyIcon,
-      run: duplicateSelection
-    },
-    { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
-    { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
-    { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save },
     { group: 'File', label: 'Export PNG', shortcut: '⌘⇧E', icon: DownloadIcon, run: savePng },
     { group: 'File', label: 'Export JPEG', icon: DownloadIcon, run: saveJpeg },
     { group: 'File', label: 'Export SVG', icon: DownloadIcon, run: saveSvg },
@@ -1000,15 +1040,20 @@ export function MindMapEditor ({
         }
         right={
           <>
-            <Button
-              variant="ghost"
-              size="icon"
-              title="Add sticky note"
-              onClick={onAddSticky}
-            >
-              <StickyNoteIcon />
-            </Button>
-            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
+            {!readOnly && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Add sticky note"
+                  onClick={onAddSticky}
+                >
+                  <StickyNoteIcon />
+                </Button>
+                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
+              </>
+            )}
+            {!readOnly && (
             <Button
               variant="ghost"
               size="icon"
@@ -1031,6 +1076,7 @@ export function MindMapEditor ({
                 }
               />
             </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" title="Export  ⌘⇧E">
@@ -1082,6 +1128,7 @@ export function MindMapEditor ({
             dropTargetId={dropTargetId}
             marquee={marquee}
             metaPressing={metaPressing}
+            readOnly={readOnly}
             onColor={onColor}
             onDragStart={onDragStart}
             onEdit={onEdit}
@@ -1117,13 +1164,15 @@ export function MindMapEditor ({
           onZoomFit={() => viewport.zoomToFit(contentBounds())}
           onUndo={undo}
           onRedo={redo}
-          canUndo={canUndo}
-          canRedo={canRedo}
+          canUndo={!readOnly && canUndo}
+          canRedo={!readOnly && canRedo}
         />
-        <CreateToolbar
-          onAddRoot={onAddRoot}
-          onReactionDragStart={onReactionDragStart}
-        />
+        {!readOnly && (
+          <CreateToolbar
+            onAddRoot={onAddRoot}
+            onReactionDragStart={onReactionDragStart}
+          />
+        )}
         {reactionDrag && (
           <div
             className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 text-2xl leading-none"

@@ -19,6 +19,7 @@ export function MindMapScene ({
   dropTargetId,
   marquee,
   metaPressing,
+  readOnly = false,
   onColor,
   onDragStart,
   onEdit,
@@ -37,6 +38,8 @@ export function MindMapScene ({
   dropTargetId: NodeId | null
   marquee: { x: number; y: number; w: number; h: number } | null
   metaPressing: boolean
+  /** Hide the editing affordances (add/remove) drawn on hover. */
+  readOnly?: boolean
   onColor: (edge: PathEdge, e: PointerPayload) => void
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
@@ -81,6 +84,7 @@ export function MindMapScene ({
             selected={selectedIds.has(node.id)}
             dropTarget={dropTargetId === node.id}
             metaPressing={metaPressing}
+            readOnly={readOnly}
             collapsedCount={counts.get(node.id)}
             onDragStart={onDragStart}
             onEdit={onEdit}

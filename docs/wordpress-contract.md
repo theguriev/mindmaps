@@ -89,6 +89,12 @@ window.mindMapsBoot = {
 }
 ```
 
+`canEdit: false` maps to the engine's `<MindMapEditor readOnly>`, which removes
+every mutating affordance and shortcut (creation, editing, delete, move, resize,
+paste, reactions, branch styling, save) while leaving pan/zoom, selection,
+search, folding and export available. The plugin must not rely on that alone —
+the REST capability checks are the actual boundary.
+
 The app mounts into an element carrying `data-mind-maps-root`; several
 instances may exist on one page and each one reads its own `data-map-id`
 attribute, falling back to `window.mindMapsBoot.mapId`.

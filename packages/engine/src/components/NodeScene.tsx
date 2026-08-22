@@ -128,6 +128,8 @@ export interface NodeSceneProps {
   collapsedCount?: number
   /** The node is the prospective new parent of a branch being dragged over it. */
   dropTarget: boolean
+  /** Hide the add/remove affordance; folding stays available (it is local). */
+  readOnly?: boolean
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
@@ -142,6 +144,7 @@ export function NodeScene ({
   metaPressing,
   collapsedCount,
   dropTarget,
+  readOnly = false,
   onDragStart,
   onEdit,
   onAdd,
@@ -269,7 +272,7 @@ export function NodeScene ({
             layout={reactionLayout}
           />
         )}
-        {hovered && (
+        {hovered && !readOnly && (
           <plus
             x={0}
             y={boxH / 2 + 2}
@@ -338,7 +341,7 @@ export function NodeScene ({
           layout={reactionLayout}
         />
       )}
-      {hovered && (
+      {hovered && !readOnly && (
         <plus
           x={0}
           y={0}

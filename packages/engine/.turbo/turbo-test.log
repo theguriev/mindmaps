@@ -5,15 +5,15 @@ $ vitest run
  [32m✓[39m src/mindmap/clockIndex.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
  [32m✓[39m src/utils/wrap.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
  [32m✓[39m src/mindmap/geometry.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
- [32m✓[39m src/markdown/inline.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/markdown/inline.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 4[2mms[22m[39m
  [32m✓[39m src/mindmap/list.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
- [32m✓[39m src/markdown/blocks.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
- [32m✓[39m src/mindmap/clipboard.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/markdown/blocks.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
  [32m✓[39m src/markdown/layout.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/mindmap/clipboard.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 3[2mms[22m[39m
  [32m✓[39m src/templates/templates.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m9 passed[39m[22m[90m (9)[39m
 [2m      Tests [22m [1m[32m71 passed[39m[22m[90m (71)[39m
-[2m   Start at [22m 14:25:52
-[2m   Duration [22m 149ms[2m (transform 364ms, setup 0ms, import 441ms, tests 30ms, environment 1ms)[22m
+[2m   Start at [22m 14:46:46
+[2m   Duration [22m 146ms[2m (transform 359ms, setup 0ms, import 440ms, tests 27ms, environment 0ms)[22m
 
