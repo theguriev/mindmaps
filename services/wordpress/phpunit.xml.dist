@@ -3,14 +3,12 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
 	bootstrap="tests/bootstrap.php"
-	cacheDirectory=".phpunit.cache"
+	cacheResultFile=".phpunit.cache/test-results"
 	colors="true"
 	beStrictAboutOutputDuringTests="true"
 	failOnRisky="true"
 	failOnWarning="true"
-	displayDetailsOnTestsThatTriggerErrors="true"
-	displayDetailsOnTestsThatTriggerWarnings="true"
-	displayDetailsOnPhpunitDeprecations="true">
+	convertDeprecationsToExceptions="false">
 
 	<testsuites>
 		<!-- Pure PHP. No WordPress, no database, no Docker. -->
@@ -23,11 +21,11 @@
 		</testsuite>
 	</testsuites>
 
-	<source>
+	<coverage>
 		<include>
 			<directory suffix=".php">plugin/mind-maps/src</directory>
 		</include>
-	</source>
+	</coverage>
 
 	<php>
 		<ini name="display_errors" value="1"/>

@@ -319,10 +319,16 @@ function handle_delete( WP_REST_Request $request ) {
 /**
  * The `id` path parameter as a post id.
  *
+ * Read from the URL params on purpose, not through `$request['id']`: for a
+ * request with a JSON body, WordPress resolves parameters JSON-first, so a body
+ * that carries an `id` (every document does) would otherwise decide which post
+ * the permission check and the write target. The route is the only authority.
+ *
  * @param WP_REST_Request $request Incoming request.
  */
 function request_id( WP_REST_Request $request ): int {
-	return \absint( $request['id'] ?? 0 );
+	$url_params = $request->get_url_params();
+	return \absint( $url_params['id'] ?? 0 );
 }
 
 /**

@@ -17,7 +17,6 @@ declare(strict_types=1);
 
 namespace MindMaps\Tests\Unit;
 
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 use function MindMaps\Document\parse_content;
@@ -161,8 +160,8 @@ final class DocumentTest extends TestCase {
 
 	/**
 	 * @param mixed $value Candidate content.
+	 * @dataProvider malformed_content
 	 */
-	#[DataProvider( 'malformed_content' )]
 	public function test_rejects_malformed_entries( mixed $value ): void {
 		$this->assertNull( parse_content( $value ) );
 	}
@@ -200,8 +199,8 @@ final class DocumentTest extends TestCase {
 
 	/**
 	 * @param float $value A coordinate PHP can hold but the engine cannot draw.
+	 * @dataProvider non_finite_numbers
 	 */
-	#[DataProvider( 'non_finite_numbers' )]
 	public function test_rejects_nan_and_inf_coordinates( float $value ): void {
 		$this->assertNull( parse_content( array( array( 'a', self::node( array( 'x' => $value ) ) ) ) ) );
 		$this->assertNull( parse_content( array( array( 'a', self::node( array( 'y' => $value ) ) ) ) ) );
@@ -386,8 +385,8 @@ final class DocumentTest extends TestCase {
 	/**
 	 * @param mixed       $value       Candidate document.
 	 * @param string|null $fallback_id Fallback id.
+	 * @dataProvider unparseable_documents
 	 */
-	#[DataProvider( 'unparseable_documents' )]
 	public function test_returns_null_for_unparseable_documents( mixed $value, ?string $fallback_id = null ): void {
 		$this->assertNull( parse_document( $value, $fallback_id ) );
 	}

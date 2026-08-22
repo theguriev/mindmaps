@@ -3,6 +3,8 @@ packages:
   - "packages/*"
   - "services/*"
 
-# pnpm 11 requires build scripts to be allow-listed explicitly.
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 11 requires dependency build scripts to be allow-listed explicitly.
+# `fs-ext-extra-prebuilt` is @wordpress/env's file-locking helper.
+allowBuilds:
+  esbuild: true
+  fs-ext-extra-prebuilt: true

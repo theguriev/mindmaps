@@ -15,7 +15,6 @@ declare(strict_types=1);
 namespace MindMaps\Tests\Integration;
 
 use MindMaps\PostType;
-use PHPUnit\Framework\Attributes\DataProvider;
 use WP_REST_Request;
 use WP_REST_Server;
 use WP_UnitTestCase;
@@ -338,8 +337,8 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 	/**
 	 * @param mixed $body Invalid document body.
+	 * @dataProvider invalid_documents
 	 */
-	#[DataProvider( 'invalid_documents' )]
 	public function test_an_invalid_document_is_rejected_on_create_and_update( mixed $body ): void {
 		\wp_set_current_user( $this->author );
 
@@ -394,8 +393,8 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 	/**
 	 * @param string $stored Raw meta value written behind the plugin's back.
+	 * @dataProvider corrupt_meta
 	 */
-	#[DataProvider( 'corrupt_meta' )]
 	public function test_a_stored_corrupt_map_degrades_gracefully( string $stored ): void {
 		$map_id = (int) $this->create_as( $this->author )['id'];
 		\update_post_meta( $map_id, PostType\META_CONTENT, \wp_slash( $stored ) );
