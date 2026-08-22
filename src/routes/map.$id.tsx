@@ -27,6 +27,7 @@ import {
   PlusIcon,
   Redo2Icon,
   SaveIcon,
+  SearchIcon,
   StickyNoteIcon,
   Undo2Icon,
   ZoomInIcon,
@@ -49,6 +50,7 @@ import { Toolbar } from '@/components/Toolbar'
 import { CanvasControls } from '@/components/CanvasControls'
 import { CreateToolbar } from '@/components/CreateToolbar'
 import { CommandMenu, type MenuCommand } from '@/components/CommandMenu'
+import { NodeSearch } from '@/components/NodeSearch'
 
 export const Route = createFileRoute('/map/$id')({
   component: MapRoute
@@ -205,6 +207,7 @@ function Editor ({ id }: { id: string }) {
     updateBranch,
     moveBranchesBy,
     toggleCollapsed,
+    reveal,
     reparentRoots,
     setReaction,
     setEditing,
@@ -220,6 +223,7 @@ function Editor ({ id }: { id: string }) {
   const { savePng, saveJpeg, saveSvg } = useDownload(canvasRef, { width, height })
 
   const [commandOpen, setCommandOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
@@ -324,6 +328,14 @@ function Editor ({ id }: { id: string }) {
   }
 
   const onRemove = (nodeId: NodeId) => remove(nodeId)
+
+  // Jump to a search hit: unfold whatever hides it, select it and centre on it.
+  const jumpToNode = (nodeId: NodeId) => {
+    reveal(nodeId)
+    setSelectedIds(new Set([nodeId]))
+    const n = list.get(nodeId)
+    if (n) viewport.centerOn(n.x, n.y)
+  }
 
   // Fold/unfold a branch; folding drops the now-hidden descendants from the
   // selection so keyboard actions can't target invisible nodes.
@@ -601,6 +613,13 @@ function Editor ({ id }: { id: string }) {
       setCommandOpen((open) => !open)
       return
     }
+    // ⌘F — find a node (replaces the browser's find-in-page here)
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyF') {
+      event.preventDefault()
+      closeEditingIfAny()
+      setSearchOpen(true)
+      return
+    }
     // Esc — exit editing, else clear the selection
     if (event.code === 'Escape') {
       if (editing) closeEditingIfAny()
@@ -722,12 +741,14 @@ function Editor ({ id }: { id: string }) {
     { group: 'File', label: 'Export PNG', shortcut: '⌘⇧E', icon: DownloadIcon, run: savePng },
     { group: 'File', label: 'Export JPEG', icon: DownloadIcon, run: saveJpeg },
     { group: 'File', label: 'Export SVG', icon: DownloadIcon, run: saveSvg },
+    { group: 'Go', label: 'Find node…', shortcut: '⌘F', icon: SearchIcon, run: () => setSearchOpen(true) },
     { group: 'Go', label: 'Back to maps', icon: ArrowLeftIcon, run: () => navigate({ to: '/' }) }
   ]
 
   return (
     <div className="absolute inset-0">
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
       <Toolbar
         left={
           <>

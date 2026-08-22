@@ -143,6 +143,15 @@ export function useViewport (
     e.stopPropagation()
   }
 
+  // Centre the viewport on a world-space point, keeping the current zoom.
+  const centerOn = (worldX: number, worldY: number) => {
+    const rect = areaRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const s = scaleRef.current
+    setOX(rect.width / 2 - worldX * s)
+    setOY(rect.height / 2 - worldY * s)
+  }
+
   const panBy = (dx: number, dy: number) => {
     setOX(oxRef.current + dx)
     setOY(oyRef.current + dy)
@@ -163,6 +172,7 @@ export function useViewport (
     handleWheel,
     panBy,
     setOffset,
+    centerOn,
     zoomIn,
     zoomOut,
     zoomTo100,
