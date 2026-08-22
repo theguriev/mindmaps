@@ -10,6 +10,7 @@ files at fixed names plus a manifest:
 ```
 dist/index.js       one IIFE bundle (React and @mindmaps/engine included)
 dist/index.css      one stylesheet
+dist/block.js       the block editor's registration — no React of its own
 dist/manifest.json  Vite's manifest, for the plugin's asset versioning
 ```
 
@@ -106,6 +107,32 @@ puts that embed in read-only mode. The decision is made once per mount, in
 The canvas itself stays interactive — the engine has no read-only mode, so a
 read-only visitor can still drag nodes around locally. Nothing they do is
 persisted, and nothing they do can reach the REST API.
+
+## The block in the inserter
+
+`src/block.ts` is the editor half of the `mind-maps/map` block — the reason it
+appears in the inserter at all. The plugin registers and renders the block in
+PHP, so a post that already contains one has always worked; but a block with no
+client registration has no `edit`, and the editor will not offer what it cannot
+draw.
+
+It is built separately (`vite.block.config.ts` → `dist/block.js`, a few KB) and
+shares nothing with `index.js`:
+
+- It is written against **WordPress' React**, reached through `window.wp`. That
+  is not a style choice — two Reacts cannot render each other's elements, the
+  same wall the command palette hits with icons. Hence no JSX and no `react`
+  import anywhere in that file.
+- What it *does* share is `@mindmaps/engine/preview` and
+  `@mindmaps/storage/document`, which are pure functions over stored
+  coordinates and belong to neither React. Those subpath exports exist so a
+  second bundle can take the projection without taking the engine.
+
+An author picks a map and sees a **still** of it: its shape, its title and its
+node count. The front end mounts the real thing, but a live, pannable, editable
+canvas inside the post editor would be two editors fighting over the same drag.
+`parseMapSummary` reads the picker's rows, so the block understands both shapes
+`GET /maps` can return — a summary, or the whole document it still sends.
 
 ## One command palette, not two
 

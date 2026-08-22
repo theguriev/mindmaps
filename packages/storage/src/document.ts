@@ -8,7 +8,7 @@
  * (`services/wordpress/plugin/mind-maps/src/document.php`) — keep the two in
  * sync when the schema changes.
  */
-import { PREVIEW_MAX_POINTS, mapPreview } from '@mindmaps/engine'
+import { PREVIEW_MAX_POINTS, mapPreview } from '@mindmaps/engine/preview'
 import type { MapDoc, MapPreview, MapSummary, NodeId, RawNode } from '@mindmaps/engine'
 
 /** Schema version stamped on every document this build writes. */

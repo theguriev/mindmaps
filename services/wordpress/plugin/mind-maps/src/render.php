@@ -192,7 +192,16 @@ function register_block(): void {
 		\wp_register_script(
 			'mind-maps-block',
 			\MIND_MAPS_URL . 'assets/block.js',
-			array( 'wp-blocks', 'wp-element', 'wp-block-editor', 'wp-components' ),
+			array(
+				'wp-blocks',
+				'wp-element',
+				'wp-block-editor',
+				'wp-components',
+				// The picker reads the map list through the REST API, and every
+				// string it shows goes through `wp.i18n`.
+				'wp-api-fetch',
+				'wp-i18n',
+			),
 			\defined( 'MIND_MAPS_VERSION' ) ? (string) \MIND_MAPS_VERSION : '0',
 			true
 		);

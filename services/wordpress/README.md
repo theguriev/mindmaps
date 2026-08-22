@@ -21,6 +21,7 @@ apps/wordpress            packages/storage            services/wordpress
         │  built by vite                                        │  reads/writes
         ▼                                                       ▼
   dist/index.js  ──── collect-assets.mjs ───▶  plugin/mind-maps/assets/
+  dist/block.js
                                                         │
                                               mind_map post + post meta
 ```
