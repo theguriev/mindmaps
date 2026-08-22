@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { LoaderCircleIcon, NetworkIcon, StarIcon, Trash2Icon } from 'lucide-react'
+import { LoaderCircleIcon, StarIcon, Trash2Icon } from 'lucide-react'
+import { MapThumb } from './MapThumb'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { cn } from '../lib/utils'
+import { mapPreview } from '../mindmap/preview'
 import { fromNow } from '../utils/relativeTime'
 import type { MapDoc } from '../mindmap/types'
 
@@ -27,7 +29,7 @@ export interface MapItemProps {
 }
 
 /**
- * One row of the map list: icon tile, title, status, meta line and actions.
+ * One row of the map list: thumbnail, title, status, meta line and actions.
  *
  * The title's hit area is stretched over the whole row (`after:inset-0`), so
  * the row-wide hover highlight is honest — everything it covers opens the map
@@ -75,12 +77,7 @@ export function MapItem ({
       )}
     >
       <div className="group relative flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent focus-within:bg-accent">
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-          aria-hidden="true"
-        >
-          <NetworkIcon className="size-5" />
-        </div>
+        <MapThumb preview={mapPreview(map.content)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
             {/* `block` rather than the button's default `inline-flex`, so the

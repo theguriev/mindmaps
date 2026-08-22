@@ -32,6 +32,8 @@ export type {
   RawNode
 } from './mindmap/types'
 export { branch, canReparent, children, collapsedCounts, prepareList, preparePaths } from './mindmap/list'
+export { mapPreview, previewPaths } from './mindmap/preview'
+export type { MapPreview } from './mindmap/preview'
 export { useAdjacency } from './mindmap/useAdjacency'
 export {
   CLIPBOARD_MIME,
@@ -63,6 +65,7 @@ export type { MapListProps } from './components/MapList'
 export { Logo } from './components/Logo'
 export { MapItem } from './components/MapItem'
 export type { MapItemProps } from './components/MapItem'
+export { MapThumb } from './components/MapThumb'
 export { Templates } from './components/Templates'
 export { Island } from './components/Island'
 export { CommandMenu } from './components/CommandMenu'
