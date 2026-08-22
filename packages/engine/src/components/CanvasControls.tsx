@@ -6,6 +6,13 @@ import {
   Redo2Icon,
   type LucideIcon
 } from 'lucide-react'
+import { Button } from './ui/button'
+import { Separator } from './ui/separator'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from './ui/tooltip'
 
 interface CanvasControlsProps {
   scale: number
@@ -22,29 +29,47 @@ interface CanvasControlsProps {
 function CtrlButton ({
   icon: Icon,
   label,
+  keys,
   onClick,
   disabled
 }: {
   icon: LucideIcon
   label: string
+  keys: string
   onClick: () => void
   disabled?: boolean
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="flex size-9 items-center justify-center rounded-xl text-foreground/80 transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-35 [&_svg]:size-[18px]"
-    >
-      <Icon />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          // The name must not depend on the tooltip being open.
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled}
+          className="rounded-xl text-foreground/80 hover:bg-muted hover:text-foreground/80 disabled:opacity-35"
+        >
+          <Icon className="size-[18px]" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {label} — <b>{keys}</b>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
-const Divider = () => <div className="mx-0.5 h-5 w-px bg-border" />
+/** The bar sizes itself from its buttons, so the rule cannot inherit a height
+ *  from the row and needs an explicit one. */
+const Divider = () => (
+  <Separator
+    orientation="vertical"
+    className="mx-0.5 data-[orientation=vertical]:h-5"
+  />
+)
 
 /** Floating bottom-right controls: zoom (− / % / + / fit) and history. */
 export function CanvasControls ({
@@ -61,26 +86,45 @@ export function CanvasControls ({
   return (
     <div className="absolute right-4 bottom-4 z-10 flex items-center gap-3 select-none">
       <div className="flex items-center rounded-2xl border bg-background p-1 shadow-lg">
-        <CtrlButton icon={MinusIcon} label="Zoom out  −" onClick={onZoomOut} />
+        <CtrlButton icon={MinusIcon} label="Zoom out" keys="−" onClick={onZoomOut} />
         <Divider />
-        <button
-          type="button"
-          title="Zoom to 100%  ⇧0"
-          aria-label="Zoom to 100%"
-          onClick={onZoom100}
-          className="flex h-9 min-w-[3.25rem] items-center justify-center rounded-xl px-1 text-xs font-medium text-foreground/80 tabular-nums transition-colors hover:bg-muted"
-        >
-          {Math.round(scale * 100)}%
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label="Zoom to 100%"
+              onClick={onZoom100}
+              className="h-9 min-w-[3.25rem] rounded-xl px-1 text-xs text-foreground/80 tabular-nums hover:bg-muted hover:text-foreground/80"
+            >
+              {Math.round(scale * 100)}%
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Zoom to 100% — <b>⇧0</b>
+          </TooltipContent>
+        </Tooltip>
         <Divider />
-        <CtrlButton icon={PlusIcon} label="Zoom in  +" onClick={onZoomIn} />
+        <CtrlButton icon={PlusIcon} label="Zoom in" keys="+" onClick={onZoomIn} />
         <Divider />
-        <CtrlButton icon={MaximizeIcon} label="Zoom to fit  ⇧1" onClick={onZoomFit} />
+        <CtrlButton icon={MaximizeIcon} label="Zoom to fit" keys="⇧1" onClick={onZoomFit} />
       </div>
       <div className="flex items-center rounded-2xl border bg-background p-1 shadow-lg">
-        <CtrlButton icon={Undo2Icon} label="Undo  ⌘Z" onClick={onUndo} disabled={!canUndo} />
+        <CtrlButton
+          icon={Undo2Icon}
+          label="Undo"
+          keys="⌘Z"
+          onClick={onUndo}
+          disabled={!canUndo}
+        />
         <Divider />
-        <CtrlButton icon={Redo2Icon} label="Redo  ⌘⇧Z" onClick={onRedo} disabled={!canRedo} />
+        <CtrlButton
+          icon={Redo2Icon}
+          label="Redo"
+          keys="⌘⇧Z"
+          onClick={onRedo}
+          disabled={!canRedo}
+        />
       </div>
     </div>
   )
