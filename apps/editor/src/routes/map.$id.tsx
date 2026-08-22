@@ -25,6 +25,9 @@ function MapRoute () {
     <MindMapEditor
       key={id}
       doc={doc}
+      // This app is the whole page, so the editor takes focus on mount and its
+      // shortcuts work without a click first.
+      autoFocus
       onSave={async (next) => {
         await store.save(id, next)
       }}

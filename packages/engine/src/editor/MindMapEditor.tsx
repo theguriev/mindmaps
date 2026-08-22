@@ -1,5 +1,6 @@
 import type {} from '../renderer/jsx'
 import {
+  useEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -209,6 +210,11 @@ export interface MindMapEditorProps {
    *  save. Navigation stays fully available — pan, zoom, select, search, copy,
    *  export, and folding (which is local only, since nothing is persisted). */
   readOnly?: boolean
+  /** Take keyboard focus on mount. A host that owns the whole page (the
+   *  standalone app) wants this so shortcuts work immediately; an editor
+   *  embedded in someone else's page must not steal focus, so it defaults to
+   *  false and the first click inside the editor arms the shortcuts. */
+  autoFocus?: boolean
   /** Host-specific entries appended to the ⌘K palette. */
   extraCommands?: MenuCommand[]
   /** Class for the editor's root element. Defaults to filling its offset
@@ -228,6 +234,7 @@ export function MindMapEditor ({
   onSave,
   onBack,
   readOnly = false,
+  autoFocus = false,
   extraCommands,
   className = 'absolute inset-0'
 }: MindMapEditorProps) {
@@ -240,6 +247,19 @@ export function MindMapEditor ({
   const contentRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<CanvasHandle | null>(null)
   const { width, height } = useOnResize(contentRef)
+
+  // The editor's own root element. Keyboard and clipboard listeners hang off
+  // it rather than `window`, so an editor embedded in someone else's page
+  // (a WordPress post) cannot swallow that page's ⌘F/⌘A/Space/copy, and two
+  // embeds on one page do not both answer the same keystroke. Kept in state,
+  // not a ref, so attaching the listeners re-runs once the node exists.
+  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null)
+
+  // A full-page host arms the shortcuts immediately; `preventScroll` keeps an
+  // embed from yanking the reader down the page if a host ever opts in.
+  useEffect(() => {
+    if (autoFocus) rootEl?.focus({ preventScroll: true })
+  }, [autoFocus, rootEl])
 
   const [saveState, setSaveState] = useState<SaveState>('idle')
 
@@ -616,7 +636,7 @@ export function MindMapEditor ({
   useEvent('mouseleave', endInteractions)
 
   // ---- Clipboard: copy / cut / paste branches ----
-  const isEditableTarget = (t: EventTarget | null) => {
+  const isEditableTarget = (t: EventTarget | null): boolean => {
     const el = t as HTMLElement | null
     if (!el || !el.tagName) return false
     return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
@@ -640,9 +660,11 @@ export function MindMapEditor ({
     return roots
   }
 
-  useEvent<ClipboardEvent>('copy', copySelection)
+  useEvent<ClipboardEvent>('copy', copySelection, rootEl)
 
-  useEvent<ClipboardEvent>('cut', (event) => {
+  useEvent<ClipboardEvent>(
+    'cut',
+    (event) => {
     if (readOnly) return
     const copied = copySelection(event)
     if (copied.length === 0) return
@@ -655,9 +677,13 @@ export function MindMapEditor ({
       removeMany(roots)
       setSelectedIds(new Set())
     }
-  })
+    },
+    rootEl
+  )
 
-  useEvent<ClipboardEvent>('paste', (event) => {
+  useEvent<ClipboardEvent>(
+    'paste',
+    (event) => {
     if (readOnly || editingNode || isEditableTarget(event.target)) return
     const cd = event.clipboardData
     if (!cd) return
@@ -711,7 +737,9 @@ export function MindMapEditor ({
     const { nodes, roots } = outlineToNodes(rows, guid, origin, asChildOf?.id)
     insertNodes(nodes)
     setSelectedIds(new Set(roots))
-  })
+    },
+    rootEl
+  )
 
   // Close the colour wheel on any click that isn't the one that opened it
   // (branch clicks stopPropagation) or a colour pick (wheel stopsPropagation).
@@ -790,7 +818,9 @@ export function MindMapEditor ({
   }
 
   // ---- Keyboard (Figma-style) ----
-  useEvent<KeyboardEvent>('keydown', (event) => {
+  useEvent<KeyboardEvent>(
+    'keydown',
+    (event) => {
     if (event.metaKey) setMetaPressing(true)
     const editing = editingNode !== null
 
@@ -959,11 +989,17 @@ export function MindMapEditor ({
         viewport.zoomToFit(contentBounds())
       }
     }
-  })
-  useEvent<KeyboardEvent>('keyup', (event) => {
+    },
+    rootEl
+  )
+  useEvent<KeyboardEvent>(
+    'keyup',
+    (event) => {
     if (!event.metaKey) setMetaPressing(false)
     if (event.code === 'Space') setSpacePan(false)
-  })
+    },
+    rootEl
+  )
 
   const rootNode = adjacency.get(0)
 
@@ -1019,7 +1055,20 @@ export function MindMapEditor ({
         : SaveIcon
 
   return (
-    <div className={className}>
+    <div
+      ref={setRootEl}
+      className={className + ' outline-none'}
+      // Focusable so the scoped keyboard/clipboard listeners can receive
+      // events, and focused on the way down from any press inside the editor —
+      // the canvas is not focusable on its own, so without this a click on a
+      // node would leave focus on the host page and the shortcuts inert.
+      // Presses on a field (the node text overlay) keep their own focus.
+      tabIndex={-1}
+      onPointerDownCapture={(e) => {
+        if (isEditableTarget(e.target)) return
+        rootEl?.focus({ preventScroll: true })
+      }}
+    >
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
       <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
       <Toolbar
