@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
-  Input,
-  MapItem,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Separator,
-  Templates,
+  MapList,
   listTemplates,
   prepareTemplate,
   type MapDoc,
@@ -155,40 +149,7 @@ function MapView ({
   )
 }
 
-/** A map row for visitors who may not touch anything. */
-function ReadOnlyMapItem ({
-  map,
-  locale,
-  onGo
-}: {
-  map: MapDoc
-  locale?: string
-  onGo: (map: MapDoc) => void
-}) {
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col items-start">
-          <Button
-            variant="link"
-            className="h-auto p-0 text-xl"
-            onClick={() => onGo(map)}
-          >
-            {map.title}
-          </Button>
-          {map.modified && (
-            <span className="text-xs text-muted-foreground">
-              Updated {new Date(map.modified).toLocaleString(locale)}
-            </span>
-          )}
-        </div>
-      </div>
-      <Separator className="my-4" />
-    </div>
-  )
-}
-
-function MapList ({
+function MapsScreen ({
   store,
   canEdit,
   locale,
@@ -202,7 +163,6 @@ function MapList ({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [answer, setAnswer] = useState<Answer<MapDoc[]> | null>(null)
   const [attempt, setAttempt] = useState(0)
-  const [filterText, setFilterText] = useState('')
   // A failed mutation must not vanish: the list's own controls hand back a
   // callback rather than a promise, so a rejection here has nowhere else to go.
   const [actionError, setActionError] = useState<unknown>(null)
@@ -235,10 +195,6 @@ function MapList ({
   }
 
   const maps = state.data
-  const needle = filterText.toLocaleLowerCase()
-  const filteredMaps = maps.filter((el) =>
-    (el.title ?? '').toLocaleLowerCase().includes(needle)
-  )
   const templates = listTemplates(maps)
 
   const go = (map: MapDoc) => onOpen(String(map.id))
@@ -287,75 +243,32 @@ function MapList ({
     })
 
   return (
-    <div ref={rootRef} className="h-full overflow-auto">
-      <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
-        <div className="flex items-center">
-          <span className="mr-3 text-3xl">🧠</span>
-          <h1 className="text-3xl font-bold">Mind maps</h1>
-        </div>
-        <Separator className="my-4" />
-        <div className="flex gap-2">
-          <Input
-            className="flex-1"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Find a map..."
-          />
-          {/* Creating a map is a write: without `edit_posts` the REST call
-              would 403, so the affordance is absent rather than broken. */}
-          {canEdit && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button>New</Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-3" align="end">
-                <Templates templates={templates} onChoose={chooseTemplate} />
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-        {actionError !== null && (
+    <MapList
+      ref={rootRef}
+      maps={maps}
+      templates={templates}
+      // A visitor without `edit_posts` gets a list with no write affordances at
+      // all: every mutation behind them would 403 at the REST boundary.
+      readOnly={!canEdit}
+      // The embed sits on somebody's site, where an absolute date in the site's
+      // own locale reads better than "8 minutes ago".
+      formatModified={(modified) => new Date(modified).toLocaleString(locale)}
+      notice={
+        actionError !== null && (
           <div
             className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
             role="alert"
           >
             {describeStoreError(actionError).title}
           </div>
-        )}
-        <Separator className="my-4" />
-        {maps.length > 0 ? (
-          <div className="flex flex-col">
-            {filteredMaps.map((map) =>
-              // `MapItem` is the editing row — it owns the star and remove
-              // buttons. A read-only visitor gets a row without them instead
-              // of the same row with dead controls.
-              canEdit ? (
-                <MapItem
-                  key={String(map.id)}
-                  map={map}
-                  onGo={go}
-                  onRemove={remove}
-                  onStar={(m, done) => setTemplateFlag(m, '1', done)}
-                  onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
-                />
-              ) : (
-                <ReadOnlyMapItem
-                  key={String(map.id)}
-                  map={map}
-                  locale={locale}
-                  onGo={go}
-                />
-              )
-            )}
-          </div>
-        ) : (
-          <div className="py-10 text-center text-muted-foreground">
-            <div className="text-4xl opacity-50">🗂️</div>
-            <div>{canEdit ? 'No maps yet — create one!' : 'No maps to show.'}</div>
-          </div>
-        )}
-      </div>
-    </div>
+        )
+      }
+      onGo={go}
+      onRemove={remove}
+      onStar={(m, done) => setTemplateFlag(m, '1', done)}
+      onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
+      onChooseTemplate={chooseTemplate}
+    />
   )
 }
 
@@ -400,6 +313,6 @@ export function App ({
   }
 
   return (
-    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
+    <MapsScreen store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
   )
 }
