@@ -1,0 +1,76 @@
+name: CI
+
+# Type-check, lint, unit-test and build the JS workspaces, then run the
+# WordPress plugin's two PHP suites: the pure unit suite (no WordPress) and the
+# integration suite against a real WordPress + MySQL via wp-env.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: type-check + lint + unit + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm type-check
+      - run: pnpm lint
+      - run: pnpm test
+      # Builds every app, including the bundle the WordPress plugin ships.
+      - run: pnpm build
+
+  php-unit:
+    name: php unit (no WordPress)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/wordpress
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      # The document module is pure PHP by design, so its suite needs neither
+      # WordPress nor a database — it is the fast gate on the security-critical
+      # validation rules.
+      - run: composer install --no-interaction --prefer-dist
+      - run: ./vendor/bin/phpunit --testsuite unit
+
+  php-integration:
+    name: php integration (wp-env)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - run: pnpm install --frozen-lockfile
+      # The plugin serves the built bundle; build it so the enqueue path is
+      # exercised the way a real install would be.
+      - run: pnpm --filter @mindmaps/wordpress-app run build
+      - run: composer install --no-interaction --prefer-dist
+        working-directory: services/wordpress
+      - run: pnpm --filter @mindmaps/wordpress run env:start
+      - run: pnpm --filter @mindmaps/wordpress run test:integration
+      - if: always()
+        run: pnpm --filter @mindmaps/wordpress run env:stop
