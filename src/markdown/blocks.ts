@@ -1,9 +1,12 @@
 /**
  * Block-level markdown parsing for the canvas text renderer.
  *
- * Node text is rendered with `white-space: nowrap` in the original app, so there
- * is no soft word-wrapping: each source line becomes its own visual line and
- * blocks only introduce vertical structure, indentation and decorations.
+ * Each source line becomes its own block; blocks introduce vertical structure,
+ * indentation and decorations. By default the layout renders each block as one
+ * visual line (nowrap, matching the original app); when the layout is given a
+ * `maxWidth` it soft-wraps paragraph/heading/blockquote/list-item blocks into
+ * multiple visual lines at word boundaries (code and tables never wrap).
+ * Wrapping is a layout concern — the parse output here is unchanged either way.
  */
 import { parseInline, type InlineRun, type LinkDefs } from './inline'
 

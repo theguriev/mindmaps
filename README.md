@@ -31,7 +31,9 @@ paint.ts  → Canvas 2D          hitTest.ts → pointer routing
   - `svgExport.ts` — serializes the same scene tree to SVG (for export).
 - **`src/markdown/`** — a from-scratch markdown → canvas text renderer
   (headings, bold/italic/strike/code, links, lists, blockquotes, code blocks,
-  hr). Node text is `nowrap`, so there is no soft wrapping.
+  hr, tables). Text soft-wraps at an opt-in `maxWidth` (nodes wrap at 480px by
+  default, or at their own width once resized); code blocks and tables never
+  wrap.
 - **`src/mindmap/`** — the domain model (`useAdjacency`, `list`, `paths`,
   geometry, clock-index).
 - **`src/routes/`** — [TanStack Router](https://tanstack.com/router) file-based
@@ -75,7 +77,8 @@ entries (root id `0`).
 
 - **Node resize** uses a single bottom-right handle and resizes about the node
   centre, instead of per-quadrant anchoring. Functionally equivalent; the
-  anchor corner differs.
+  anchor corner differs. A deliberately resized node also wraps its drawn
+  markdown at its own width instead of the 480px default.
 
 ## Verification
 

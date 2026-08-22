@@ -15,16 +15,32 @@ import { useDownload } from '@/hooks/useDownload'
 import { useOnResize } from '@/hooks/useOnResize'
 import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
+import { branch } from '@/mindmap/list'
+import { getNewPosition } from '@/mindmap/geometry'
+import {
+  CLIPBOARD_MIME,
+  clipBounds,
+  collectBranches,
+  outlineText,
+  outlineToNodes,
+  parseClipboard,
+  parseOutline,
+  remapForPaste
+} from '@/mindmap/clipboard'
+import { guid } from '@/utils/guid'
 import { getMap, saveMap } from '@/api/maps'
 import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import {
   ArrowLeftIcon,
+  ChevronsDownUpIcon,
   CommandIcon,
+  CopyIcon,
   DownloadIcon,
   MaximizeIcon,
   PlusIcon,
   Redo2Icon,
   SaveIcon,
+  SearchIcon,
   StickyNoteIcon,
   Undo2Icon,
   ZoomInIcon,
@@ -40,12 +56,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MindMapScene } from '@/components/MindMapScene'
 import { editorOverlayAnchor } from '@/components/NodeScene'
+import { nodeBounds } from '@/components/nodeGeometry'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { EdgeEditor } from '@/components/EdgeEditor'
 import { Toolbar } from '@/components/Toolbar'
 import { CanvasControls } from '@/components/CanvasControls'
 import { CreateToolbar } from '@/components/CreateToolbar'
 import { CommandMenu, type MenuCommand } from '@/components/CommandMenu'
+import { NodeSearch } from '@/components/NodeSearch'
 
 export const Route = createFileRoute('/map/$id')({
   component: MapRoute
@@ -66,9 +84,17 @@ const ADD_OFFSET = new Map<number, number>([
 
 interface DragState {
   ids: NodeId[]
+  /** Every id inside the dragged branches — excluded from drop targeting. */
+  branchIds: Set<NodeId>
   lastX: number
   lastY: number
+  /** Accumulated world-space movement — drop targeting arms only after a real
+   *  drag, so a jittery selection click can never reparent. */
+  moved: number
 }
+
+/** World px of accumulated movement before a drag starts drop-targeting. */
+const REPARENT_THRESHOLD = 4
 interface PanState {
   startClientX: number
   startClientY: number
@@ -114,7 +140,7 @@ function selectionRoots (
   return roots
 }
 
-/** Ids of nodes whose point falls inside a world-space rectangle. */
+/** Ids of visible nodes whose drawn box intersects a world-space rectangle. */
 function nodesInRect (
   list: Map<NodeId, MindNode>,
   x: number,
@@ -124,9 +150,31 @@ function nodesInRect (
 ): NodeId[] {
   const ids: NodeId[] = []
   for (const n of list.values()) {
-    if (n.x >= x && n.x <= x + w && n.y >= y && n.y <= y + h) ids.push(n.id)
+    if (n.hidden) continue
+    const b = nodeBounds(n)
+    if (b.x <= x + w && b.x + b.w >= x && b.y <= y + h && b.y + b.h >= y) {
+      ids.push(n.id)
+    }
   }
   return ids
+}
+
+/** Topmost visible node whose drawn box contains a world-space point,
+ *  excluding `exclude`d ids and sticky notes (they can't take children by
+ *  drop). "Topmost" = last in list order, matching paint order. */
+function dropTargetAt (
+  list: Map<NodeId, MindNode>,
+  x: number,
+  y: number,
+  exclude: Set<NodeId>
+): NodeId | null {
+  let target: NodeId | null = null
+  for (const n of list.values()) {
+    if (n.hidden || n.sticky || exclude.has(n.id)) continue
+    const b = nodeBounds(n)
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) target = n.id
+  }
+  return target
 }
 
 /** Move the selection with the arrow keys: ←parent, →first child, ↑/↓ siblings. */
@@ -137,7 +185,7 @@ function navigateSelection (
 ): NodeId | null {
   const node = list.get(selectedId)
   if (!node) return null
-  const nodes = Array.from(list.values())
+  const nodes = Array.from(list.values()).filter((n) => !n.hidden)
   if (key === 'ArrowLeft') return node.parent ?? null
   if (key === 'ArrowRight') {
     const child = nodes.find((n) => n.parent === selectedId)
@@ -177,6 +225,10 @@ function Editor ({ id }: { id: string }) {
     update,
     updateBranch,
     moveBranchesBy,
+    toggleCollapsed,
+    reveal,
+    reparentRoots,
+    insertNodes,
     setReaction,
     setEditing,
     pushSnapshot,
@@ -191,10 +243,13 @@ function Editor ({ id }: { id: string }) {
   const { savePng, saveJpeg, saveSvg } = useDownload(canvasRef, { width, height })
 
   const [commandOpen, setCommandOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [metaPressing, setMetaPressing] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<NodeId>>(new Set())
+  // Prospective new parent while a branch drag hovers over another node.
+  const [dropTargetId, setDropTargetId] = useState<NodeId | null>(null)
   const [marquee, setMarquee] = useState<
     { x: number; y: number; w: number; h: number } | null
   >(null)
@@ -203,10 +258,27 @@ function Editor ({ id }: { id: string }) {
     { emoji: string; x: number; y: number } | null
   >(null)
 
+  // Hidden nodes (inside folded branches — e.g. re-folded by undo/redo) are
+  // inert: they may linger in the raw selection state, but every consumer works
+  // off this visible view, so keyboard/clipboard/drag can never touch them.
+  const visibleSelectedIds = (() => {
+    let dirty = false
+    for (const id of selectedIds) {
+      if (list.get(id)?.hidden) {
+        dirty = true
+        break
+      }
+    }
+    if (!dirty) return selectedIds
+    return new Set(Array.from(selectedIds).filter((id) => !list.get(id)?.hidden))
+  })()
+
   // The "active" node — target for Tab / Enter / arrow keys when several are
   // selected. Sets preserve insertion order, so it's the last one added.
   const activeId =
-    selectedIds.size > 0 ? Array.from(selectedIds)[selectedIds.size - 1] : null
+    visibleSelectedIds.size > 0
+      ? Array.from(visibleSelectedIds)[visibleSelectedIds.size - 1]
+      : null
 
   const dragRef = useRef<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
@@ -227,11 +299,15 @@ function Editor ({ id }: { id: string }) {
     }
   }
 
-  const editingNode = Array.from(list.values()).find((n) => n.editing) ?? null
+  // A hidden node can't be edited — if its branch just got re-folded (undo),
+  // the overlay must not float over empty canvas.
+  const editingNode =
+    Array.from(list.values()).find((n) => n.editing && !n.hidden) ?? null
 
   useEffect(() => {
     if (!doc) navigate({ to: '/' })
   }, [doc, navigate])
+
 
   const closeEditingIfAny = () => {
     editDirtyRef.current = false
@@ -259,16 +335,24 @@ function Editor ({ id }: { id: string }) {
     }
     // Plain press: if the node isn't part of the selection, select just it.
     // Then drag whatever is selected (each branch moves together).
-    let sel = selectedIds
-    if (!selectedIds.has(node.id)) {
+    let sel = visibleSelectedIds
+    if (!visibleSelectedIds.has(node.id)) {
       sel = new Set([node.id])
       setSelectedIds(sel)
     }
     moveSnapRef.current = adjacency
+    const roots = selectionRoots(list, sel)
+    const nodes = Array.from(list.values())
+    const branchIds = new Set<NodeId>(roots)
+    for (const r of roots) {
+      for (const n of branch(nodes, r)) branchIds.add(n.id)
+    }
     dragRef.current = {
-      ids: selectionRoots(list, sel),
+      ids: roots,
+      branchIds,
       lastX: e.worldX,
-      lastY: e.worldY
+      lastY: e.worldY,
+      moved: 0
     }
   }
 
@@ -286,6 +370,47 @@ function Editor ({ id }: { id: string }) {
   }
 
   const onRemove = (nodeId: NodeId) => remove(nodeId)
+
+  // Jump to a search hit: unfold whatever hides it, select it and centre on it.
+  const jumpToNode = (nodeId: NodeId) => {
+    reveal(nodeId)
+    setSelectedIds(new Set([nodeId]))
+    const n = list.get(nodeId)
+    if (n) viewport.centerOn(n.x, n.y)
+  }
+
+  // Clone the selected branches (fresh ids, +24/+24, same parents) and select
+  // the clones. One undo step.
+  const duplicateSelection = () => {
+    const roots = selectionRoots(list, visibleSelectedIds)
+    if (roots.length === 0) return
+    const clip = collectBranches(adjacency, roots)
+    const { nodes, roots: newRoots } = remapForPaste(clip, {
+      makeId: guid,
+      dx: 24,
+      dy: 24,
+      rootParent: 'keep'
+    })
+    insertNodes(nodes)
+    setSelectedIds(new Set(newRoots))
+  }
+
+  // Fold/unfold a branch; folding drops the now-hidden descendants from the
+  // selection (so keyboard actions can't target invisible nodes) and closes
+  // the text editor if it was open on one of them.
+  const onToggleCollapsed = (node: MindNode) => {
+    if (!node.collapsed) {
+      const hiddenIds = new Set(
+        branch(Array.from(list.values()), node.id).map((n) => n.id)
+      )
+      if (editingNode && hiddenIds.has(editingNode.id)) closeEditingIfAny()
+      setSelectedIds((prev) => {
+        const next = new Set(Array.from(prev).filter((i) => !hiddenIds.has(i)))
+        return next.size === prev.size ? prev : next
+      })
+    }
+    toggleCollapsed(node.id)
+  }
 
   // Attach a sticky note to the active node (or the root) and edit it right away.
   const onAddSticky = () => {
@@ -331,7 +456,7 @@ function Editor ({ id }: { id: string }) {
       startY: e.worldY,
       moved: false,
       additive: e.originalEvent.shiftKey,
-      base: e.originalEvent.shiftKey ? new Set(selectedIds) : new Set()
+      base: e.originalEvent.shiftKey ? new Set(visibleSelectedIds) : new Set()
     }
   }
 
@@ -358,7 +483,16 @@ function Editor ({ id }: { id: string }) {
         moveBranchesBy(drag.ids, dx, dy)
         drag.lastX = world.x
         drag.lastY = world.y
+        drag.moved += Math.abs(dx) + Math.abs(dy)
       }
+      // After a real drag (not click jitter), hovering another node's box makes
+      // it the drop target: releasing there reparents the dragged branches
+      // under it (highlighted in the scene).
+      const target =
+        drag.moved > REPARENT_THRESHOLD
+          ? dropTargetAt(list, world.x, world.y, drag.branchIds)
+          : null
+      setDropTargetId((prev) => (prev === target ? prev : target))
       return
     }
     if (marqueeRef.current) {
@@ -399,6 +533,14 @@ function Editor ({ id }: { id: string }) {
   })
 
   const endInteractions = () => {
+    // Dropping a dragged branch onto a highlighted node reparents it there.
+    // Part of the drag gesture, so it shares the drag's single undo step —
+    // recordMove() guarantees that step exists even if no movement recorded.
+    if (dragRef.current && dropTargetId != null) {
+      recordMove()
+      reparentRoots(dragRef.current.ids, dropTargetId)
+    }
+    if (dropTargetId != null) setDropTargetId(null)
     dragRef.current = null
     panRef.current = null
     resizeRef.current = null
@@ -423,6 +565,103 @@ function Editor ({ id }: { id: string }) {
 
   useEvent('mouseup', endInteractions)
   useEvent('mouseleave', endInteractions)
+
+  // ---- Clipboard: copy / cut / paste branches ----
+  const isEditableTarget = (t: EventTarget | null) => {
+    const el = t as HTMLElement | null
+    if (!el || !el.tagName) return false
+    return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+  }
+
+  const viewCenter = () => ({
+    x: (width / 2 - viewport.offsetX) / viewport.scale,
+    y: (height / 2 - viewport.offsetY) / viewport.scale
+  })
+
+  // Serialize the selection into the clipboard: a full-fidelity JSON payload
+  // plus a plain-text indented outline. Returns the copied roots.
+  const copySelection = (event: ClipboardEvent): NodeId[] => {
+    if (editingNode || isEditableTarget(event.target)) return []
+    const roots = selectionRoots(list, visibleSelectedIds)
+    if (roots.length === 0 || !event.clipboardData) return []
+    const clip = collectBranches(adjacency, roots)
+    event.clipboardData.setData(CLIPBOARD_MIME, JSON.stringify(clip))
+    event.clipboardData.setData('text/plain', outlineText(clip))
+    event.preventDefault()
+    return roots
+  }
+
+  useEvent<ClipboardEvent>('copy', copySelection)
+
+  useEvent<ClipboardEvent>('cut', (event) => {
+    const copied = copySelection(event)
+    if (copied.length === 0) return
+    // Like Delete: drop the primary root first so it can't mask its (deletable)
+    // descendants — ⌘A + ⌘X must cut everything except the root itself.
+    const deletable = new Set(visibleSelectedIds)
+    deletable.delete(0)
+    const roots = selectionRoots(list, deletable)
+    if (roots.length > 0) {
+      removeMany(roots)
+      setSelectedIds(new Set())
+    }
+  })
+
+  useEvent<ClipboardEvent>('paste', (event) => {
+    if (editingNode || isEditableTarget(event.target)) return
+    const cd = event.clipboardData
+    if (!cd) return
+    const target = activeId != null ? list.get(activeId) : undefined
+    const asChildOf = target && !target.hidden ? target : undefined
+    // Where a branch pasted under `asChildOf` should land: the same radial
+    // slot a newly added child would get.
+    const childOrigin = () => {
+      const index = Array.from(list.values()).filter(
+        (n) => n.parent === asChildOf!.id
+      ).length
+      const pos = getNewPosition(index)
+      return { x: asChildOf!.x + pos.x, y: asChildOf!.y + pos.y }
+    }
+
+    const clip = parseClipboard(cd.getData(CLIPBOARD_MIME) || 'null')
+    if (clip) {
+      event.preventDefault()
+      const first = clip.nodes.find((n) => n.id === clip.roots[0])
+      if (!first) return
+      let dx: number
+      let dy: number
+      if (asChildOf) {
+        const origin = childOrigin()
+        dx = origin.x - first.x
+        dy = origin.y - first.y
+      } else {
+        const c = viewCenter()
+        const b = clipBounds(clip)
+        dx = c.x - (b.minX + b.maxX) / 2
+        dy = c.y - (b.minY + b.maxY) / 2
+      }
+      const { nodes, roots } = remapForPaste(clip, {
+        makeId: guid,
+        dx,
+        dy,
+        rootParent: asChildOf?.id
+      })
+      insertNodes(nodes)
+      setSelectedIds(new Set(roots))
+      return
+    }
+
+    // Plain text: parse as an indented outline → new branch / trees.
+    const text = cd.getData('text/plain')
+    if (!text.trim()) return
+    const rows = parseOutline(text)
+    if (rows.length === 0) return
+    event.preventDefault()
+    const origin = asChildOf ? childOrigin() : viewCenter()
+    const { nodes, roots } = outlineToNodes(rows, guid, origin, asChildOf?.id)
+    insertNodes(nodes)
+    setSelectedIds(new Set(roots))
+  })
 
   // Close the colour wheel on any click that isn't the one that opened it
   // (branch clicks stopPropagation) or a colour pick (wheel stopsPropagation).
@@ -460,19 +699,20 @@ function Editor ({ id }: { id: string }) {
     })
   }
 
-  // World-space bounding box of all nodes (for zoom-to-fit).
+  // World-space bounding box of all visible nodes (for zoom-to-fit).
   const contentBounds = () => {
-    const nodes = Array.from(list.values())
+    const nodes = Array.from(list.values()).filter((n) => !n.hidden)
     if (nodes.length === 0) return null
     let minX = Infinity
     let minY = Infinity
     let maxX = -Infinity
     let maxY = -Infinity
     for (const n of nodes) {
-      minX = Math.min(minX, n.x)
-      minY = Math.min(minY, n.y)
-      maxX = Math.max(maxX, n.x)
-      maxY = Math.max(maxY, n.y)
+      const b = nodeBounds(n)
+      minX = Math.min(minX, b.x)
+      minY = Math.min(minY, b.y)
+      maxX = Math.max(maxX, b.x + b.w)
+      maxY = Math.max(maxY, b.y + b.h)
     }
     return { minX, minY, maxX, maxY }
   }
@@ -481,6 +721,11 @@ function Editor ({ id }: { id: string }) {
   useEvent<KeyboardEvent>('keydown', (event) => {
     if (event.metaKey) setMetaPressing(true)
     const editing = editingNode !== null
+
+    // Keys typed into other DOM inputs (the ⌘K / ⌘F dialogs) must never reach
+    // the map shortcuts — Backspace there would delete the selection. The
+    // node textarea keeps its dedicated `editing` handling below.
+    if (!editing && isEditableTarget(event.target)) return
 
     // Space (held) → Figma-style pan mode (drag anywhere to pan).
     if (event.code === 'Space' && !editing) {
@@ -512,16 +757,42 @@ function Editor ({ id }: { id: string }) {
       else undo()
       return
     }
-    // ⌘A — select every node
+    // ⌘A — select every visible node
     if (event.metaKey && event.code === 'KeyA' && !editing) {
       event.preventDefault()
-      setSelectedIds(new Set(list.keys()))
+      setSelectedIds(
+        new Set(
+          Array.from(list.values())
+            .filter((n) => !n.hidden)
+            .map((n) => n.id)
+        )
+      )
+      return
+    }
+    // ⌘. — fold / unfold the active node's branch
+    if (event.metaKey && event.code === 'Period' && !editing) {
+      event.preventDefault()
+      const n = activeId != null ? list.get(activeId) : null
+      if (n) onToggleCollapsed(n)
+      return
+    }
+    // ⌘D — duplicate the selected branches next to the originals
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyD' && !editing) {
+      event.preventDefault()
+      duplicateSelection()
       return
     }
     // ⌘K — command menu
     if (event.metaKey && event.code === 'KeyK') {
       event.preventDefault()
       setCommandOpen((open) => !open)
+      return
+    }
+    // ⌘F — find a node (replaces the browser's find-in-page here)
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyF') {
+      event.preventDefault()
+      closeEditingIfAny()
+      setSearchOpen(true)
       return
     }
     // Esc — exit editing, else clear the selection
@@ -535,7 +806,7 @@ function Editor ({ id }: { id: string }) {
       // Delete / Backspace — remove every selected node (never the root).
       // Drop the root first so it can't mask its (deletable) descendants.
       if (event.code === 'Delete' || event.code === 'Backspace') {
-        const deletable = new Set(selectedIds)
+        const deletable = new Set(visibleSelectedIds)
         deletable.delete(0)
         const roots = selectionRoots(list, deletable)
         if (roots.length > 0) {
@@ -629,18 +900,37 @@ function Editor ({ id }: { id: string }) {
     { group: 'View', label: 'Zoom out', shortcut: '−', icon: ZoomOutIcon, run: viewport.zoomOut },
     { group: 'View', label: 'Zoom to 100%', shortcut: '⇧0', run: viewport.zoomTo100 },
     { group: 'View', label: 'Zoom to fit', shortcut: '⇧1', icon: MaximizeIcon, run: () => viewport.zoomToFit(contentBounds()) },
+    {
+      group: 'Edit',
+      label: 'Collapse / expand branch',
+      shortcut: '⌘.',
+      icon: ChevronsDownUpIcon,
+      run: () => {
+        const n = activeId != null ? list.get(activeId) : null
+        if (n) onToggleCollapsed(n)
+      }
+    },
+    {
+      group: 'Edit',
+      label: 'Duplicate branch',
+      shortcut: '⌘D',
+      icon: CopyIcon,
+      run: duplicateSelection
+    },
     { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
     { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
     { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save },
     { group: 'File', label: 'Export PNG', shortcut: '⌘⇧E', icon: DownloadIcon, run: savePng },
     { group: 'File', label: 'Export JPEG', icon: DownloadIcon, run: saveJpeg },
     { group: 'File', label: 'Export SVG', icon: DownloadIcon, run: saveSvg },
+    { group: 'Go', label: 'Find node…', shortcut: '⌘F', icon: SearchIcon, run: () => setSearchOpen(true) },
     { group: 'Go', label: 'Back to maps', icon: ArrowLeftIcon, run: () => navigate({ to: '/' }) }
   ]
 
   return (
     <div className="absolute inset-0">
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
       <Toolbar
         left={
           <>
@@ -719,7 +1009,8 @@ function Editor ({ id }: { id: string }) {
             offsetX={viewport.offsetX}
             offsetY={viewport.offsetY}
             hoveredId={hoveredId}
-            selectedIds={selectedIds}
+            selectedIds={visibleSelectedIds}
+            dropTargetId={dropTargetId}
             marquee={marquee}
             metaPressing={metaPressing}
             onColor={onColor}
@@ -727,6 +1018,7 @@ function Editor ({ id }: { id: string }) {
             onEdit={onEdit}
             onAdd={onAdd}
             onRemove={onRemove}
+            onToggleCollapsed={onToggleCollapsed}
           />
         </Canvas>
         {editingNode && (

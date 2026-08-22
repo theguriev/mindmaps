@@ -24,6 +24,8 @@ export interface RawNode {
   sticky?: boolean
   /** An emoji reaction badge shown at the node's top-right corner. */
   reaction?: string
+  /** Folded branch: the node stays visible, all its descendants are hidden. */
+  collapsed?: boolean
   component?: 'root' | 'node'
   isRightSide?: boolean
   isUpSide?: boolean
@@ -40,6 +42,9 @@ export interface MindNode extends RawNode {
   isRightSide: boolean
   isUpSide: boolean
   isHaveChildren: boolean
+  collapsed: boolean
+  /** True when any ancestor is collapsed — the node is not drawn or hit. */
+  hidden: boolean
 }
 
 export interface PathEdge {
