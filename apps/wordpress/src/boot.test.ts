@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  resolveControls,
   BootError,
   editingAllowed,
   intlLocale,
@@ -272,5 +273,22 @@ describe('withoutParam', () => {
     const result = withoutParam('http://site.test' + ADMIN, 'new')
     expect(result.startsWith('/wp-admin/')).toBe(true)
     expect(result).not.toContain('site.test')
+  })
+})
+
+describe('resolveControls', () => {
+  it('draws the controls unless a mount says not to', () => {
+    // Absent is the case that matters: the admin screen and every embed
+    // written before this existed must keep their toolbar.
+    expect(resolveControls(undefined)).toBe(true)
+    expect(resolveControls(null)).toBe(true)
+    expect(resolveControls('1')).toBe(true)
+    expect(resolveControls('anything else')).toBe(true)
+  })
+
+  it('takes them away on the documented off values', () => {
+    expect(resolveControls('0')).toBe(false)
+    expect(resolveControls('false')).toBe(false)
+    expect(resolveControls(' NO ')).toBe(false)
   })
 })

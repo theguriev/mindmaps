@@ -59,6 +59,8 @@ carry two embeds of different maps:
 | `data-can-edit` | `"1"` | this visitor may write *this* map |
 | | `"0"` (or anything else) | read-only |
 | | absent | fall back to the payload's `canEdit` (older plugin) |
+| `data-controls` | `"0"` | the map and nothing over it, framed on arrival |
+| | absent | draw the controls, open at 100% |
 
 The empty `data-map-id` matters: `[mind_map]` on a page that also carries
 `[mind_map id="42"]` has to reach the list, and a page-wide fallback would

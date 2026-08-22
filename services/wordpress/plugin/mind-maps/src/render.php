@@ -71,6 +71,10 @@ function normalize_args( mixed $raw_id, mixed $raw_height ): array {
  * - `data-new` is `"1"` when the visitor arrived asking to start a map (the
  *   admin bar's "+ New → Mind Map"), so the screen creates a blank one and
  *   opens it.
+ * - `data-controls` is `"0"` on an embed that wants the map and nothing else:
+ *   no title, no buttons, no zoom. Absent means the controls are drawn, which
+ *   is what the admin screen and every older embed expect. A map with no zoom
+ *   control has to arrive framed, so the app also fits it to the box.
  *
  * @param array<string, mixed> $args `id` and `height`, plus optional `class`
  *                                   and `map_param`.
@@ -91,6 +95,10 @@ function mount_markup( array $args ): string {
 		? $args['map_param']
 		: null;
 
+	// Only the "off" case is emitted: drawing the controls is the default, and
+	// an attribute that says so on every mount is noise on the page.
+	$controls = false !== ( $args['controls'] ?? true );
+
 	// An explicit `null` height means "no inline style": the caller sizes the
 	// container from a stylesheet. An inline `min-height` would otherwise win
 	// over every rule a stylesheet can write, and the admin screen needs the
@@ -98,13 +106,14 @@ function mount_markup( array $args ): string {
 	$sized = ! \array_key_exists( 'height', $args ) || null !== $args['height'];
 
 	$attributes = \sprintf(
-		'class="%s" data-mind-maps-root="1"%s data-map-id="%s" data-can-edit="%s"%s%s',
+		'class="%s" data-mind-maps-root="1"%s data-map-id="%s" data-can-edit="%s"%s%s%s',
 		\esc_attr( $classes ),
 		$sized ? \sprintf( ' style="min-height:%dpx"', \absint( $normalized['height'] ) ) : '',
 		\esc_attr( $map_id ?? '' ),
 		Assets\default_can_edit( $map_id ) ? '1' : '0',
 		null === $map_param ? '' : \sprintf( ' data-map-param="%s"', \esc_attr( $map_param ) ),
-		true === ( $args['new'] ?? false ) ? ' data-new="1"' : ''
+		true === ( $args['new'] ?? false ) ? ' data-new="1"' : '',
+		$controls ? '' : ' data-controls="0"'
 	);
 
 	return \sprintf(
@@ -122,8 +131,9 @@ function mount_markup( array $args ): string {
 function shortcode( array $atts ): string {
 	$merged = \shortcode_atts(
 		array(
-			'id'     => '',
-			'height' => (string) DEFAULT_HEIGHT,
+			'id'       => '',
+			'height'   => (string) DEFAULT_HEIGHT,
+			'controls' => '1',
 		),
 		$atts,
 		SHORTCODE_TAG
@@ -131,8 +141,9 @@ function shortcode( array $atts ): string {
 
 	return mount_markup(
 		array(
-			'id'     => $merged['id'],
-			'height' => $merged['height'],
+			'id'       => $merged['id'],
+			'height'   => $merged['height'],
+			'controls' => ! \in_array( (string) $merged['controls'], array( '0', 'false', 'no' ), true ),
 		)
 	);
 }
@@ -157,9 +168,10 @@ function block_callback( mixed $attributes = array() ): string {
 
 	return mount_markup(
 		array(
-			'id'     => $attributes['id'] ?? 0,
-			'height' => $attributes['height'] ?? 0,
-			'class'  => 'wp-block-mind-maps-map',
+			'id'       => $attributes['id'] ?? 0,
+			'height'   => $attributes['height'] ?? 0,
+			'controls' => false !== ( $attributes['controls'] ?? true ),
+			'class'    => 'wp-block-mind-maps-map',
 		)
 	);
 }

@@ -134,11 +134,13 @@ function MapView ({
   store,
   id,
   canEdit,
+  controls,
   onBack
 }: {
   store: MapStore
   id: string
   canEdit: boolean
+  controls: boolean
   onBack?: () => void
 }) {
   const wordPressCommands = useWordPressCommands()
@@ -199,10 +201,17 @@ function MapView ({
           await store.save(id, next)
         }}
         onBack={onBack}
+        // An embed asked to show the map and nothing else has no zoom control,
+        // so it has to arrive framed on the whole thing rather than at 100% on
+        // wherever the root sits.
+        controls={controls}
+        fitOnMount={!controls}
         {...wordPressCommands}
         className="absolute inset-0"
       />
-      {!canEdit && <ReadOnlyBadge />}
+      {/* Nothing to say on an embed with no controls: there is nothing there
+          to edit with, so "read-only" is answering a question nobody asked. */}
+      {!canEdit && controls && <ReadOnlyBadge />}
     </div>
   )
 }
@@ -359,6 +368,7 @@ export function App ({
   canEdit,
   mapParam,
   startNew,
+  controls = true,
   container
 }: {
   boot: BootConfig
@@ -366,6 +376,8 @@ export function App ({
   canEdit?: boolean
   mapParam?: string
   startNew?: boolean
+  /** `false` on an embed that wants the map and nothing over it. */
+  controls?: boolean
   /** The mount box, so a map created on arrival is centred in it. */
   container?: HTMLElement | null
 }) {
@@ -486,6 +498,7 @@ export function App ({
         store={store}
         id={openId}
         canEdit={mayEdit}
+        controls={controls}
         onBack={pinned ? undefined : () => show(undefined)}
       />
     )

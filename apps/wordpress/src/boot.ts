@@ -167,6 +167,18 @@ export function resolveStartNew (attribute: string | null | undefined): boolean 
 }
 
 /**
+ * Whether a mount draws the editor's controls.
+ *
+ * Absent means yes: the admin screen and every embed written before this
+ * existed expect them, and a missing attribute must not silently strip a
+ * toolbar. Only the documented "off" values turn them off.
+ */
+export function resolveControls (attribute: string | null | undefined): boolean {
+  if (attribute === undefined || attribute === null) return true
+  return !['0', 'false', 'no'].includes(attribute.trim().toLowerCase())
+}
+
+/**
  * The same URL, showing `mapId` — or the list, when it is undefined.
  *
  * Everything else in the address is preserved: in the admin the screen itself

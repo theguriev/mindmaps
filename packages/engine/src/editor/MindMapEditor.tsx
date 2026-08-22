@@ -220,6 +220,19 @@ export interface MindMapEditorProps {
    *  embedded in someone else's page must not steal focus, so it defaults to
    *  false and the first click inside the editor arms the shortcuts. */
   autoFocus?: boolean
+  /**
+   * Draw the floating controls, or present the map on its own.
+   *
+   * `false` leaves nothing over the canvas: no title, no actions, no create
+   * bar, no zoom. For a map placed in somebody's post that is often the point
+   * — the reader came for the diagram, not for a toolbar they cannot use —
+   * and it pairs with `fitOnMount`, because a map you cannot zoom had better
+   * arrive already fitting.
+   */
+  controls?: boolean
+  /** Frame the whole map on the first paint, instead of opening at 100% on
+   *  wherever the root happens to be. */
+  fitOnMount?: boolean
   /** Host-specific entries appended to the ⌘K palette. */
   extraCommands?: MenuCommand[]
   /**
@@ -278,6 +291,8 @@ export function MindMapEditor ({
   onBack,
   readOnly = false,
   autoFocus = false,
+  controls = true,
+  fitOnMount = false,
   extraCommands,
   onCommands,
   className = 'absolute inset-0'
@@ -927,6 +942,25 @@ export function MindMapEditor ({
     return { minX, minY, maxX, maxY }
   }
 
+  // ---- Framing on arrival ----
+  // A map opens at 100% on wherever its root sits, which is right for an
+  // editor you are about to work in and wrong for one you were handed. Fitting
+  // waits for the first real measurement: the canvas has no size until it is
+  // laid out, and `zoomToFit` reads the element's own rectangle.
+  const fittedRef = useRef(false)
+  useEffect(() => {
+    if (!fitOnMount || fittedRef.current) return
+    if (width === 0 || height === 0) return
+    const bounds = contentBounds()
+    if (bounds === null) return
+    fittedRef.current = true
+    viewport.zoomToFit(bounds)
+    // `contentBounds` and `viewport` are rebuilt every render, and depending on
+    // them would re-frame the map under the reader on every keystroke. The ref
+    // is the real guard: this runs once, on the first measurement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitOnMount, width, height])
+
   // ---- Keyboard (Figma-style) ----
   useEvent<KeyboardEvent>(
     'keydown',
@@ -1190,6 +1224,7 @@ export function MindMapEditor ({
           controls float over it, so an embed spends none of its host's page on
           a title bar. The rows themselves let pointer events through — only the
           islands inside them take clicks. */}
+      {controls && (
       <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
         {(onBack !== undefined || rootNode !== undefined || saveState !== 'idle') && (
         <Island className="min-w-0 gap-1">
@@ -1262,6 +1297,7 @@ export function MindMapEditor ({
           )}
         </Island>
       </div>
+      )}
       <div
         className="absolute inset-0 overflow-hidden bg-background"
         ref={contentRef}
@@ -1316,7 +1352,9 @@ export function MindMapEditor ({
             onStartResize={onStartResize}
           />
         )}
+        {controls && (
         <CanvasControls
+          history={!readOnly}
           scale={viewport.scale}
           onZoomOut={viewport.zoomOut}
           onZoomIn={viewport.zoomIn}
@@ -1324,10 +1362,11 @@ export function MindMapEditor ({
           onZoomFit={() => viewport.zoomToFit(contentBounds())}
           onUndo={undo}
           onRedo={redo}
-          canUndo={!readOnly && canUndo}
-          canRedo={!readOnly && canRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
-        {!readOnly && (
+        )}
+        {controls && !readOnly && (
           <CreateToolbar
             onAddRoot={onAddRoot}
             onAddSticky={onAddSticky}

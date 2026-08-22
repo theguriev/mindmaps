@@ -15,6 +15,10 @@ import {
 } from './ui/tooltip'
 
 interface CanvasControlsProps {
+  /** Undo and redo are the only controls here that change anything, so a
+   *  read-only map is shown without them rather than with them greyed out —
+   *  a permanently disabled button is a question nobody can answer. */
+  history?: boolean
   scale: number
   onZoomOut: () => void
   onZoomIn: () => void
@@ -73,6 +77,7 @@ const Divider = () => (
 
 /** Floating bottom-right controls: zoom (− / % / + / fit) and history. */
 export function CanvasControls ({
+  history = true,
   scale,
   onZoomOut,
   onZoomIn,
@@ -109,6 +114,7 @@ export function CanvasControls ({
         <Divider />
         <CtrlButton icon={MaximizeIcon} label="Zoom to fit" keys="⇧1" onClick={onZoomFit} />
       </div>
+      {history && (
       <div className="flex items-center rounded-2xl border bg-background p-1 shadow-lg">
         <CtrlButton
           icon={Undo2Icon}
@@ -126,6 +132,7 @@ export function CanvasControls ({
           disabled={!canRedo}
         />
       </div>
+      )}
     </div>
   )
 }

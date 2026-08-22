@@ -36,6 +36,7 @@ interface WpElement {
 interface BlockAttributes {
   id: number
   height: number
+  controls: boolean
 }
 
 interface EditProps {
@@ -137,10 +138,8 @@ export function registerMapBlock (): void {
   const el = wp.element.createElement
   const { useEffect, useState } = wp.element
   const { useBlockProps, InspectorControls } = wp.blockEditor
-  const { PanelBody, SelectControl, RangeControl, Placeholder, Spinner } = wp.components as Record<
-    string,
-    unknown
-  >
+  const { PanelBody, SelectControl, RangeControl, ToggleControl, Placeholder, Spinner } =
+    wp.components as Record<string, unknown>
   const __ = wp.i18n.__
 
   function useMaps (): { maps: MapChoice[] | null, failed: boolean } {
@@ -203,6 +202,15 @@ export function registerMapBlock (): void {
           onChange: (value: number) => setAttributes({ height: value ?? MIN_HEIGHT }),
           __next40pxDefaultSize: true,
           __nextHasNoMarginBottom: true
+        }),
+        el(ToggleControl, {
+          label: __('Show controls', 'mind-maps'),
+          help: attributes.controls
+            ? __('Readers get the title, the zoom and the export menu.', 'mind-maps')
+            : __('Just the map. It arrives framed on the whole thing, since there is no zoom to reach for.', 'mind-maps'),
+          checked: attributes.controls,
+          onChange: (value: boolean) => setAttributes({ controls: value }),
+          __nextHasNoMarginBottom: true
         })
       )
     )
@@ -258,7 +266,8 @@ export function registerMapBlock (): void {
           el(
             'div',
             { style: { color: '#757575', fontSize: '13px', marginTop: '2px' } },
-            `${nodeLabel(chosen.nodes)} · ${attributes.height}px`
+            `${nodeLabel(chosen.nodes)} · ${attributes.height}px` +
+              (attributes.controls ? '' : ` · ${__('no controls', 'mind-maps')}`)
           ),
           el(
             'div',
@@ -279,7 +288,8 @@ export function registerMapBlock (): void {
     keywords: [__('mind map', 'mind-maps'), __('diagram', 'mind-maps'), __('brainstorm', 'mind-maps')],
     attributes: {
       id: { type: 'integer', default: 0 },
-      height: { type: 'integer', default: 600 }
+      height: { type: 'integer', default: 600 },
+      controls: { type: 'boolean', default: true }
     },
     example: {},
     edit: Edit,

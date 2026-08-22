@@ -7,6 +7,7 @@ import {
   resolveCanEdit,
   resolveMapId,
   resolveMapParam,
+  resolveControls,
   resolveStartNew,
   type BootConfig
 } from './boot'
@@ -65,6 +66,7 @@ function mount (container: HTMLElement, boot: BootConfig): void {
         canEdit={resolveCanEdit(container.dataset.canEdit, boot)}
         mapParam={resolveMapParam(container.dataset.mapParam)}
         startNew={resolveStartNew(container.dataset.new)}
+        controls={resolveControls(container.dataset.controls)}
         container={container}
       />
     </StrictMode>
