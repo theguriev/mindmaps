@@ -3,8 +3,15 @@
  * scene). Beyond colour it edits line weight, style (solid/dashed) and shape
  * (straight/smooth). Segments apply to the whole sub-branch via `onPick`; the
  * editor stays open for multiple tweaks and closes on an outside click.
+ *
+ * It rides on the Popover primitive purely to be portalled onto `<body>`: as a
+ * `fixed z-50` element of its own it stayed inside the embed's stacking context
+ * (`.mind-maps-app` is `isolation: isolate`) and rendered *behind* the
+ * WordPress admin bar, while `position: fixed` let it spill outside the embed.
+ * Every other floating surface here escapes the same way.
  */
 import type { LineShape, LineStyle, RawNode } from '../mindmap/types'
+import { Popover, PopoverAnchor, PopoverContent } from './ui/popover'
 
 const GREY = '#979797'
 const HILITE = '#409eff'
@@ -65,16 +72,23 @@ const SOLID_VIS = 'M-100.48151070085152,22.637712059187045 A109,109,0,0,1,-102.6
 const STRAIGHT_HIT = 'M-106.46,-46.069 A116,116,0,0,1,-86.563,-77.219 L-71.639,-63.905 A96,96,0,0,0,-88.104,-38.126 Z'
 const SMOOTH_HIT = 'M-85.787,-78.081 A116,116,0,0,1,-56.87,-101.1 L-47.065,-83.671 A96,96,0,0,0,-70.996,-64.619 Z'
 
+/** Half the wheel: the offset that pulls it back over its anchor point. */
+const HALF = 125
+
 export function EdgeEditor ({
   x,
   y,
   current,
-  onPick
+  onPick,
+  onClose
 }: {
   x: number
   y: number
   current: EdgeStyle
   onPick: (patch: Partial<RawNode>) => void
+  /** Dismissed from the popover itself (a press outside it, or Escape). The
+   *  caller's own window-level close still runs; closing twice is a no-op. */
+  onClose: () => void
 }) {
   const curWeight = current.strokeWidth
   const curStyle: LineStyle = current.lineStyle ?? 'solid'
@@ -86,90 +100,113 @@ export function EdgeEditor ({
   }
 
   return (
-    <svg
-      className="fixed z-50 -translate-x-1/2 -translate-y-1/2 drop-shadow-xl [&_.hit]:cursor-pointer [&_.seg]:cursor-pointer"
-      width={250}
-      height={250}
-      viewBox="-125 -125 250 250"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ left: x, top: y }}
+    <Popover
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
     >
-      {/* Faint background wheel + centre hole */}
-      <path
-        d="M0,-93 A93,93,0,0,1,92.33120313440956,-11.1332352778695 L120.12984493831782,-14.485177081959243 A121,121,0,0,1,-80.2754432347867,90.53647449209925 L-61.69930761020797,69.58588535343165 A93,93,0,0,1,-72.80334406734008,57.867720644695325 L-94.72263045320591,75.29026019363586 A121,121,0,0,1,-119.66994706487438,-17.89144403032254 L-91.97772790936625,-13.751275163801623 A93,93,0,0,1,-88.02982255397542,-29.995838729990545 L-114.53342504334437,-39.026843939019955 A121,121,0,0,1,-49.60281731443898,-110.36557667348272 L-38.12447942349442,-84.82643496391647 A93,93,0,0,1,0-93 M32,0 A32,32,0,0,0,-32,0 A32,32,0,0,0,32,0"
-        fill="rgba(0,0,0,0.08)"
-      />
-
-      {/* Line weight */}
-      <g>
-        {WEIGHTS.map((w) => {
-          const selected = curWeight === w.value
-          return (
-            <g key={String(w.value)} onClick={pick({ strokeWidth: w.value })}>
-              <path className="hit" d={w.hit} fill={HIT} />
-              <path d={w.vis} fill={selected ? HILITE : GREY} />
-            </g>
-          )
-        })}
-      </g>
-
-      {/* Line style */}
-      <g onClick={pick({ lineStyle: 'dashed' })}>
-        <path className="hit" d={DASH_HIT} fill={HIT} />
-        <path d={DASH_VIS} fill={curStyle === 'dashed' ? HILITE : GREY} />
-      </g>
-      <g onClick={pick({ lineStyle: 'solid' })}>
-        <path className="hit" d={SOLID_HIT} fill={HIT} />
-        <path d={SOLID_VIS} fill={curStyle === 'solid' ? HILITE : GREY} />
-      </g>
-
-      {/* Line shape */}
-      <g onClick={pick({ lineShape: 'straight' })}>
-        <path className="hit" d={STRAIGHT_HIT} fill={HIT} />
-        <polyline
-          transform="translate(-107 -54) scale(1.9) rotate(300)"
-          points="-2.31217783 7.53108891 4.75 9.29903811 6.25 6.70096189 13.3121778 8.46891109"
-          stroke={curShape === 'straight' ? HILITE : GREY}
-          strokeWidth={3}
-          fill="none"
-        />
-      </g>
-      <g onClick={pick({ lineShape: 'smooth' })}>
-        <path className="hit" d={SMOOTH_HIT} fill={HIT} />
-        <path
-          transform="scale(1.9) translate(-24 -42) rotate(125)"
-          d="M-2.8434354,6.51657658 C-1.77770015,9.27894918 0.503379707,10.1076905 3.99980417,9.00280057 C7.49622862,7.89791062 9.77743904,8.72478491 10.8434354,11.4834234"
-          stroke={curShape === 'smooth' ? HILITE : GREY}
-          strokeWidth={3}
-          fill="none"
-        />
-      </g>
-
-      {/* Colours — vivid (outer) + pastel (inner) */}
-      <g>
-        {VIVID.map((c) => (
+      {/* A zero-size anchor at the click point, in the viewport coordinates the
+          click reported. The wheel is a radial menu read against the cursor, so
+          it is centred on that point and never nudged off it. */}
+      <PopoverAnchor asChild>
+        <div className="pointer-events-none fixed size-0" style={{ left: x, top: y }} />
+      </PopoverAnchor>
+      <PopoverContent
+        side="bottom"
+        align="center"
+        sideOffset={-HALF}
+        avoidCollisions={false}
+        // The canvas keeps the focus: the editor's shortcuts hang off its root
+        // element, and pulling focus into the portal would disarm them.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="w-auto border-0 bg-transparent p-0 shadow-none"
+      >
+        <svg
+          className="drop-shadow-xl [&_.hit]:cursor-pointer [&_.seg]:cursor-pointer"
+          width={HALF * 2}
+          height={HALF * 2}
+          viewBox="-125 -125 250 250"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Faint background wheel + centre hole */}
           <path
-            key={c.fill}
-            className="seg"
-            d={c.d}
-            fill={c.fill}
-            stroke={current.stroke === c.fill ? '#111827' : 'none'}
-            strokeWidth={current.stroke === c.fill ? 2.5 : 0}
-            onClick={pick({ stroke: c.fill })}
+            d="M0,-93 A93,93,0,0,1,92.33120313440956,-11.1332352778695 L120.12984493831782,-14.485177081959243 A121,121,0,0,1,-80.2754432347867,90.53647449209925 L-61.69930761020797,69.58588535343165 A93,93,0,0,1,-72.80334406734008,57.867720644695325 L-94.72263045320591,75.29026019363586 A121,121,0,0,1,-119.66994706487438,-17.89144403032254 L-91.97772790936625,-13.751275163801623 A93,93,0,0,1,-88.02982255397542,-29.995838729990545 L-114.53342504334437,-39.026843939019955 A121,121,0,0,1,-49.60281731443898,-110.36557667348272 L-38.12447942349442,-84.82643496391647 A93,93,0,0,1,0-93 M32,0 A32,32,0,0,0,-32,0 A32,32,0,0,0,32,0"
+            fill="rgba(0,0,0,0.08)"
           />
-        ))}
-        {PASTEL.map((c) => (
-          <path
-            key={c.fill}
-            className="seg"
-            d={c.d}
-            fill={c.fill}
-            stroke={current.stroke === c.fill ? '#111827' : 'none'}
-            strokeWidth={current.stroke === c.fill ? 2.5 : 0}
-            onClick={pick({ stroke: c.fill })}
-          />
-        ))}
-      </g>
-    </svg>
+
+          {/* Line weight */}
+          <g>
+            {WEIGHTS.map((w) => {
+              const selected = curWeight === w.value
+              return (
+                <g key={String(w.value)} onClick={pick({ strokeWidth: w.value })}>
+                  <path className="hit" d={w.hit} fill={HIT} />
+                  <path d={w.vis} fill={selected ? HILITE : GREY} />
+                </g>
+              )
+            })}
+          </g>
+
+          {/* Line style */}
+          <g onClick={pick({ lineStyle: 'dashed' })}>
+            <path className="hit" d={DASH_HIT} fill={HIT} />
+            <path d={DASH_VIS} fill={curStyle === 'dashed' ? HILITE : GREY} />
+          </g>
+          <g onClick={pick({ lineStyle: 'solid' })}>
+            <path className="hit" d={SOLID_HIT} fill={HIT} />
+            <path d={SOLID_VIS} fill={curStyle === 'solid' ? HILITE : GREY} />
+          </g>
+
+          {/* Line shape */}
+          <g onClick={pick({ lineShape: 'straight' })}>
+            <path className="hit" d={STRAIGHT_HIT} fill={HIT} />
+            <polyline
+              transform="translate(-107 -54) scale(1.9) rotate(300)"
+              points="-2.31217783 7.53108891 4.75 9.29903811 6.25 6.70096189 13.3121778 8.46891109"
+              stroke={curShape === 'straight' ? HILITE : GREY}
+              strokeWidth={3}
+              fill="none"
+            />
+          </g>
+          <g onClick={pick({ lineShape: 'smooth' })}>
+            <path className="hit" d={SMOOTH_HIT} fill={HIT} />
+            <path
+              transform="scale(1.9) translate(-24 -42) rotate(125)"
+              d="M-2.8434354,6.51657658 C-1.77770015,9.27894918 0.503379707,10.1076905 3.99980417,9.00280057 C7.49622862,7.89791062 9.77743904,8.72478491 10.8434354,11.4834234"
+              stroke={curShape === 'smooth' ? HILITE : GREY}
+              strokeWidth={3}
+              fill="none"
+            />
+          </g>
+
+          {/* Colours — vivid (outer) + pastel (inner) */}
+          <g>
+            {VIVID.map((c) => (
+              <path
+                key={c.fill}
+                className="seg"
+                d={c.d}
+                fill={c.fill}
+                stroke={current.stroke === c.fill ? '#111827' : 'none'}
+                strokeWidth={current.stroke === c.fill ? 2.5 : 0}
+                onClick={pick({ stroke: c.fill })}
+              />
+            ))}
+            {PASTEL.map((c) => (
+              <path
+                key={c.fill}
+                className="seg"
+                d={c.d}
+                fill={c.fill}
+                stroke={current.stroke === c.fill ? '#111827' : 'none'}
+                strokeWidth={current.stroke === c.fill ? 2.5 : 0}
+                onClick={pick({ stroke: c.fill })}
+              />
+            ))}
+          </g>
+        </svg>
+      </PopoverContent>
+    </Popover>
   )
 }

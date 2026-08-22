@@ -22,17 +22,36 @@ export const STICKY_FONT =
 /** Node markdown soft-wraps at this width unless the node was deliberately
  *  resized (then its own width wins). */
 export const DEFAULT_WRAP_WIDTH = 480
-/** The edit overlay's textarea never renders narrower than its 300px CSS
- *  floor, so persisted widths below it were never visible to the user (the
- *  140px default that editing writes back included) — treat them as
- *  "never resized" instead of as sub-300px wrap columns. */
-const EXPLICIT_MIN_W = 300
+/** Floor of the edit overlay's box, in node px. One number for the resize
+ *  clamp, the textarea's own size and the "was this ever resized?" test below:
+ *  while the CSS floor and the drag clamp were separate, dragging a node
+ *  narrower kept shrinking `width` under a box that had stopped moving, and
+ *  the node snapped out to `DEFAULT_WRAP_WIDTH` the moment the editor closed. */
+export const EDITOR_MIN_W = 300
+export const EDITOR_MIN_H = 74
+/** However much padding a node subtracts, its text still gets a column. */
 const MIN_WRAP_WIDTH = 80
+
+/**
+ * Which side of the editing textarea the markdown toolbar sits on. It is
+ * always outside the textarea's box — a bar painted over the text is what made
+ * the first lines of a long node invisible — and above it by default, except
+ * when the overlay hangs upwards from its anchor (`anchorY === 'bottom'`),
+ * where "above" would put the bar off the top of the node.
+ */
+export function editorToolbarSide (
+  anchorY: 'top' | 'bottom' | 'center'
+): 'top' | 'bottom' {
+  return anchorY === 'bottom' ? 'bottom' : 'top'
+}
 
 /** The width a node's markdown wraps at. */
 export function wrapWidthFor (node: MindNode): number {
   if (node.sticky) return Math.max(MIN_WRAP_WIDTH, node.width - STICKY_PAD * 2)
-  const base = node.width >= EXPLICIT_MIN_W ? node.width : DEFAULT_WRAP_WIDTH
+  // A width under the editor's floor was never visible to the user (the 140px
+  // default that editing writes back included), so it is not a wrap column
+  // anyone chose — treat it as "never resized".
+  const base = node.width >= EDITOR_MIN_W ? node.width : DEFAULT_WRAP_WIDTH
   if (node.component === 'root') {
     return Math.max(MIN_WRAP_WIDTH, base - ROOT_PAD_X * 2)
   }
