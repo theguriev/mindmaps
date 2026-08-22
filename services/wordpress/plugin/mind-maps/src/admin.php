@@ -27,6 +27,9 @@ const MENU_CAPABILITY = 'edit_posts';
 /** Query parameter naming the open map, as `post.php` uses `post`. */
 const MAP_QUERY_ARG = 'map';
 
+/** Query parameter asking the screen to open its template picker. */
+const NEW_QUERY_ARG = 'new';
+
 /**
  * The `$hook_suffix` WordPress gives a top-level page with our slug.
  */
@@ -102,6 +105,64 @@ function menu_icon(): string {
 }
 
 /**
+ * The URL of the screen, optionally asking it to start a new map.
+ *
+ * @param bool $new Open the template picker on arrival.
+ */
+function screen_url( bool $new = false ): string {
+	$args = array( 'page' => MENU_SLUG );
+	if ( $new ) {
+		$args[ NEW_QUERY_ARG ] = '1';
+	}
+	return \add_query_arg( $args, \admin_url( 'admin.php' ) );
+}
+
+/**
+ * Whether a query asks for a new map.
+ *
+ * @param array<string, mixed> $query Typically `$_GET`.
+ */
+function wants_new_map( array $query ): bool {
+	$raw = $query[ NEW_QUERY_ARG ] ?? null;
+	return \is_scalar( $raw ) && \in_array( (string) $raw, array( '1', 'true' ), true );
+}
+
+/**
+ * Add "Mind Map" to the admin bar's "+ New" menu. Hooked to `admin_bar_menu`.
+ *
+ * Core builds that menu from post types with `show_in_admin_bar`, and links
+ * them to `post-new.php` — the editor this plugin deliberately does not use
+ * (the post type is `show_ui: false`). So the node is added by hand, pointing
+ * at the screen that does own map creation.
+ *
+ * The link only opens the picker: creating a map is a REST write, and a plain
+ * `GET` a browser may prefetch has no business making one.
+ *
+ * @param \WP_Admin_Bar $bar The admin bar being built.
+ */
+function register_admin_bar( \WP_Admin_Bar $bar ): void {
+	if ( ! \current_user_can( MENU_CAPABILITY ) ) {
+		return;
+	}
+
+	// Without the parent the node would be dropped silently — that happens when
+	// the user may create nothing else, and core omits the whole "+ New" menu.
+	$parent = null === $bar->get_node( 'new-content' ) ? null : 'new-content';
+	if ( null === $parent ) {
+		return;
+	}
+
+	$bar->add_node(
+		array(
+			'parent' => $parent,
+			'id'     => 'new-mind-map',
+			'title'  => \__( 'Mind Map', 'mind-maps' ),
+			'href'   => screen_url( true ),
+		)
+	);
+}
+
+/**
  * Enqueue the bundle on our screen only. Hooked to `admin_enqueue_scripts`.
  *
  * @param mixed $hook_suffix Current admin page hook suffix.
@@ -159,10 +220,15 @@ function render_page(): void {
 	echo '<h1 class="screen-reader-text">' . \esc_html__( 'Mind Maps', 'mind-maps' ) . '</h1>';
 	echo '<hr class="wp-header-end">';
 
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- opens a picker, changes nothing.
+	$new = wants_new_map( \wp_unslash( $_GET ) );
+
 	// mount_markup() escapes everything it emits.
 	echo Render\mount_markup( // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped markup.
 		array(
 			'id'        => null === $map_id ? 0 : (int) $map_id,
+			// "+ New → Mind Map" in the admin bar lands here.
+			'new'       => $new,
 			// The screen's stylesheet sizes the canvas against the viewport; an
 			// inline `min-height` would outrank it and bring the grey back on a
 			// short window.

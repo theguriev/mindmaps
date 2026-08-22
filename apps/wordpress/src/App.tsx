@@ -167,11 +167,13 @@ function MapsScreen ({
   store,
   canEdit,
   locale,
+  startNew,
   onOpen
 }: {
   store: MapStore
   canEdit: boolean
   locale?: string
+  startNew?: boolean
   onOpen: (id: string) => void
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -264,6 +266,8 @@ function MapsScreen ({
       // A visitor without `edit_posts` gets a list with no write affordances at
       // all: every mutation behind them would 403 at the REST boundary.
       readOnly={!canEdit}
+      // Arriving from the admin bar's "+ New → Mind Map".
+      startNew={startNew}
       // The embed sits on somebody's site, where an absolute date in the site's
       // own locale reads better than "8 minutes ago".
       formatModified={(modified) => new Date(modified).toLocaleString(locale)}
@@ -304,12 +308,14 @@ export function App ({
   boot,
   mapId,
   canEdit,
-  mapParam
+  mapParam,
+  startNew
 }: {
   boot: BootConfig
   mapId?: string
   canEdit?: boolean
   mapParam?: string
+  startNew?: boolean
 }) {
   const store = useMemo(
     () => createWpStore({ root: boot.root, nonce: boot.nonce }),
@@ -359,6 +365,12 @@ export function App ({
   return (
     // `show`, not `setOpenId`: opening a map from the list has to move the URL
     // too when this mount owns it.
-    <MapsScreen store={store} canEdit={mayEdit} locale={locale} onOpen={show} />
+    <MapsScreen
+      store={store}
+      canEdit={mayEdit}
+      locale={locale}
+      startNew={startNew}
+      onOpen={show}
+    />
   )
 }

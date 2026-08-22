@@ -29,6 +29,11 @@ function bootstrap(): void {
 
 	\add_action( 'admin_menu', 'MindMaps\\Admin\\register_menu' );
 	\add_action( 'admin_enqueue_scripts', 'MindMaps\\Admin\\enqueue_admin' );
+
+	// Priority 80: core builds the "+ New" node at 70, so the parent exists by
+	// the time this runs. Fires on the front end too, where the admin bar is
+	// the only way into the editor.
+	\add_action( 'admin_bar_menu', 'MindMaps\\Admin\\register_admin_bar', 80 );
 }
 
 /**

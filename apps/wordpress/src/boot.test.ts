@@ -9,6 +9,7 @@ import {
   resolveCanEdit,
   resolveMapId,
   resolveMapParam,
+  resolveStartNew,
   type BootConfig
 } from './boot'
 
@@ -232,5 +233,21 @@ describe('mapIdFromUrl', () => {
   it('round-trips with mapUrl', () => {
     const url = mapUrl('/wp-admin/admin.php?page=mind-maps', 'map', '13')
     expect(mapIdFromUrl(url, 'map')).toBe('13')
+  })
+})
+
+describe('resolveStartNew', () => {
+  it('reads the admin bar\'s request to start a map', () => {
+    expect(resolveStartNew('1')).toBe(true)
+    expect(resolveStartNew('true')).toBe(true)
+  })
+
+  it('defaults to the plain list', () => {
+    // Anything unrecognised is "just show me the list": opening a picker
+    // nobody asked for is the more annoying way to be wrong.
+    expect(resolveStartNew(undefined)).toBe(false)
+    expect(resolveStartNew(null)).toBe(false)
+    expect(resolveStartNew('0')).toBe(false)
+    expect(resolveStartNew('yes')).toBe(false)
   })
 })

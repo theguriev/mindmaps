@@ -147,6 +147,18 @@ export function resolveMapParam (
 }
 
 /**
+ * Whether this mount was asked to start a new map.
+ *
+ * Set by the admin bar's "+ New → Mind Map", which is a plain link: the link
+ * opens the template picker and the map is only created once a template is
+ * chosen, through the REST API. A `GET` a browser may prefetch must not write.
+ */
+export function resolveStartNew (attribute: string | null | undefined): boolean {
+  if (attribute === undefined || attribute === null) return false
+  return ['1', 'true'].includes(attribute.trim().toLowerCase())
+}
+
+/**
  * The same URL, showing `mapId` — or the list, when it is undefined.
  *
  * Everything else in the address is preserved: in the admin the screen itself

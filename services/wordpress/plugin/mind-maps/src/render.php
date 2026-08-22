@@ -68,6 +68,8 @@ function normalize_args( mixed $raw_id, mixed $raw_height ): array {
  *   address identifies the map the way `post.php?post=1` identifies a post. A
  *   shortcode must never rewrite the URL of the post it sits in, so it emits
  *   no such attribute.
+ * - `data-new` is `"1"` when the visitor arrived asking to start a map (the
+ *   admin bar's "+ New → Mind Map"), so the screen opens its template picker.
  *
  * @param array<string, mixed> $args `id` and `height`, plus optional `class`
  *                                   and `map_param`.
@@ -95,12 +97,13 @@ function mount_markup( array $args ): string {
 	$sized = ! \array_key_exists( 'height', $args ) || null !== $args['height'];
 
 	$attributes = \sprintf(
-		'class="%s" data-mind-maps-root="1"%s data-map-id="%s" data-can-edit="%s"%s',
+		'class="%s" data-mind-maps-root="1"%s data-map-id="%s" data-can-edit="%s"%s%s',
 		\esc_attr( $classes ),
 		$sized ? \sprintf( ' style="min-height:%dpx"', \absint( $normalized['height'] ) ) : '',
 		\esc_attr( $map_id ?? '' ),
 		Assets\default_can_edit( $map_id ) ? '1' : '0',
-		null === $map_param ? '' : \sprintf( ' data-map-param="%s"', \esc_attr( $map_param ) )
+		null === $map_param ? '' : \sprintf( ' data-map-param="%s"', \esc_attr( $map_param ) ),
+		true === ( $args['new'] ?? false ) ? ' data-new="1"' : ''
 	);
 
 	return \sprintf(

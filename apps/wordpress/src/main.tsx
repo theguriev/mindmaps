@@ -7,6 +7,7 @@ import {
   resolveCanEdit,
   resolveMapId,
   resolveMapParam,
+  resolveStartNew,
   type BootConfig
 } from './boot'
 import './index.css'
@@ -63,6 +64,7 @@ function mount (container: HTMLElement, boot: BootConfig): void {
         mapId={resolveMapId(container.dataset.mapId, boot)}
         canEdit={resolveCanEdit(container.dataset.canEdit, boot)}
         mapParam={resolveMapParam(container.dataset.mapParam)}
+        startNew={resolveStartNew(container.dataset.new)}
       />
     </StrictMode>
   )
