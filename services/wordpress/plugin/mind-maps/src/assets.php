@@ -62,13 +62,41 @@ function select_assets( mixed $manifest ): array {
 		if ( ! \is_string( $chunk['file'] ?? null ) || '' === $chunk['file'] ) {
 			continue;
 		}
+		$css = string_list( $chunk['css'] ?? array() );
+		if ( array() === $css ) {
+			// A build with no code splitting emits the stylesheet as its own
+			// manifest asset (`"style.css": { "file": "index.css" }`) instead of
+			// listing it on the entry chunk, so look for it there before
+			// concluding the bundle has no styles.
+			$css = stylesheet_assets( $manifest );
+		}
 		return array(
 			'js'  => $chunk['file'],
-			'css' => string_list( $chunk['css'] ?? array() ),
+			'css' => $css,
 		);
 	}
 
 	return $fallback;
+}
+
+/**
+ * Every `.css` file a manifest mentions, in manifest order.
+ *
+ * @param array<mixed> $manifest Decoded manifest.
+ * @return string[]
+ */
+function stylesheet_assets( array $manifest ): array {
+	$files = array();
+	foreach ( $manifest as $chunk ) {
+		if ( ! \is_array( $chunk ) ) {
+			continue;
+		}
+		$file = $chunk['file'] ?? null;
+		if ( \is_string( $file ) && \str_ends_with( $file, '.css' ) ) {
+			$files[] = $file;
+		}
+	}
+	return \array_values( \array_unique( $files ) );
 }
 
 /**

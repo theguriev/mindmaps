@@ -72,6 +72,27 @@ final class PureHelpersTest extends TestCase {
 		);
 	}
 
+	public function test_reads_a_manifest_whose_stylesheet_is_its_own_asset(): void {
+		// What a no-code-splitting Vite build actually emits: the entry chunk
+		// lists no css, and the stylesheet appears as a separate asset.
+		$this->assertSame(
+			array(
+				'js'  => 'index.js',
+				'css' => array( 'index.css' ),
+			),
+			select_assets(
+				array(
+					'src/main.tsx' => array(
+						'file'    => 'index.js',
+						'name'    => 'main',
+						'isEntry' => true,
+					),
+					'style.css'    => array( 'file' => 'index.css' ),
+				)
+			)
+		);
+	}
+
 	public function test_string_list_tolerates_junk(): void {
 		$this->assertSame( array(), string_list( null ) );
 		$this->assertSame( array(), string_list( '' ) );
