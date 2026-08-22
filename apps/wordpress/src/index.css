@@ -14,7 +14,8 @@
 
      theme     → the design tokens the utilities compile against
      utilities → the utility classes themselves
-     (base)    → deliberately absent; Preflight is never imported
+     (base)    → deliberately absent; Preflight is never imported, and the
+                 resets the engine actually needs are re-added below, scoped
 
    and adds back, under `.mind-maps-app` (the class `main.tsx` puts on every
    mount container) and the Radix portals that render outside it, only the
@@ -24,9 +25,21 @@
    registered explicitly below — without that, every utility class its
    components use would be missing from this build.
    --------------------------------------------------------------------------- */
-@layer theme, base, components, utilities;
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
+/* Nothing here may sit in a cascade layer, and the utilities carry `important`.
+   Both follow from the same rule: an UNLAYERED declaration beats a layered one
+   whatever its specificity. The host's CSS is unlayered — WordPress' own
+   `forms.css` says `textarea { padding: 8px }`, every theme styles its
+   headings, links and lists — so a layered utility loses every one of those
+   fights. It lost them in practice: `.pt-11` on the node editor's textarea was
+   overruled and the text it reserved room for ended up underneath the
+   formatting toolbar, invisible.
+
+   `important` is the other half. Unlayered puts us in the same competition as
+   the host; `important` is what wins it against a theme rule more specific
+   than a single utility class (`.entry-content textarea`, and worse). This is
+   what the flag is for — a widget dropped into a page it does not own. */
+@import 'tailwindcss/theme.css';
+@import 'tailwindcss/utilities.css' important;
 @import 'tw-animate-css';
 
 /* Class detection: the engine's components (a workspace package, whose source
@@ -112,109 +125,113 @@
 /* ---------------------------------------------------------------------------
    Scoped Preflight.
 
-   Everything below sits in the `base` layer, exactly where Preflight sat, so
-   the utilities keep winning over it and the host theme's own (unlayered)
-   rules keep winning over the utilities — the cascade the engine's components
-   were built against, only reachable from inside the embed.
+   The reset Preflight would do document-wide, done only inside the embed. It
+   is unlayered like everything else here, so it outranks a host's bare
+   element rules on the elements it owns; the utilities above outrank it in
+   turn through `important`, which is the order the engine's components expect.
 
    The scope is the mount container plus the Radix portal roots: popovers,
    dropdowns, tooltips and the ⌘K/search dialogs are rendered into `<body>`,
    outside `.mind-maps-app`, and their `data-slot` attributes are written by
    the engine's own components — no page element carries them.
    --------------------------------------------------------------------------- */
-@layer base {
+:is(
   .mind-maps-app,
   [data-slot='popover-content'],
   [data-slot='dropdown-menu-content'],
   [data-slot='tooltip-content'],
   [data-slot='dialog-portal'],
   [data-slot='dialog-overlay'],
-  [data-slot='dialog-content'] {
-    /* Preflight's universal reset. Every layout in the engine assumes
-       border-box sizing and no inherited margin or padding, and a `border-*`
-       utility only sets the width — the colour comes from here, as it does in
-       the engine's own `* { @apply border-border outline-ring/50 }`. */
-    &,
-    &::before,
-    &::after,
-    & *,
-    & ::before,
-    & ::after,
-    & ::backdrop,
-    & ::file-selector-button {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      border: 0 solid;
-      @apply border-border outline-ring/50;
-    }
+  [data-slot='dialog-content']
+) {
+  /* Preflight's universal reset. Every layout in the engine assumes
+     border-box sizing and no inherited margin or padding, and a `border-*`
+     utility only sets the width — the colour comes from here, as it does in
+     the engine's own `* { @apply border-border outline-ring/50 }`. */
+  &,
+  &::before,
+  &::after,
+  & *,
+  & ::before,
+  & ::after,
+  & ::backdrop,
+  & ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+    /* Written out rather than `@apply border-border outline-ring/50`: under
+       an `important` build `@apply` would carry that flag into a default and
+       beat the border/outline utilities it exists to back up. */
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
 
-    /* Headings, lists and links are sized and coloured by utility classes on
-       the engine's markup, which expects the browser's defaults gone. */
-    & :is(h1, h2, h3, h4, h5, h6) {
-      font-size: inherit;
-      font-weight: inherit;
-    }
+  /* Headings, lists and links are sized and coloured by utility classes on
+     the engine's markup, which expects the browser's defaults gone. */
+  & :is(h1, h2, h3, h4, h5, h6) {
+    font-size: inherit;
+    font-weight: inherit;
+  }
 
-    & :is(ol, ul, menu) {
-      list-style: none;
-    }
+  & :is(ol, ul, menu) {
+    list-style: none;
+  }
 
-    & a {
-      color: inherit;
-      -webkit-text-decoration: inherit;
-      text-decoration: inherit;
-    }
+  & a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
 
-    /* `display: block` on replaced elements is what keeps the canvas free of
-       the inline baseline gap and lucide's icons aligned inside buttons. */
-    & :is(img, svg, video, canvas, audio, iframe, embed, object) {
-      display: block;
-      vertical-align: middle;
-    }
+  /* `display: block` on replaced elements is what keeps the canvas free of
+     the inline baseline gap and lucide's icons aligned inside buttons. */
+  & :is(img, svg, video, canvas, audio, iframe, embed, object) {
+    display: block;
+    vertical-align: middle;
+  }
 
-    & :is(img, video) {
-      max-width: 100%;
-      height: auto;
-    }
+  & :is(img, video) {
+    max-width: 100%;
+    height: auto;
+  }
 
-    /* Form controls do not inherit typography on their own, and the engine's
-       buttons and inputs are styled as if they did. */
-    & :is(button, input, select, optgroup, textarea),
-    & ::file-selector-button {
-      font: inherit;
-      font-feature-settings: inherit;
-      font-variation-settings: inherit;
-      letter-spacing: inherit;
-      color: inherit;
-      border-radius: 0;
-      background-color: transparent;
-      opacity: 1;
-    }
+  /* Form controls do not inherit typography on their own, and the engine's
+     buttons and inputs are styled as if they did. */
+  & :is(button, input, select, optgroup, textarea),
+  & ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    border-radius: 0;
+    background-color: transparent;
+    opacity: 1;
+  }
 
-    & :is(button, input:where([type='button'], [type='reset'], [type='submit'])),
-    & ::file-selector-button {
-      appearance: button;
-    }
+  & :is(button, input:where([type='button'], [type='reset'], [type='submit'])),
+  & ::file-selector-button {
+    appearance: button;
+  }
 
-    & textarea {
-      resize: vertical;
-    }
+  & textarea {
+    resize: vertical;
+  }
 
+  & ::placeholder {
+    opacity: 1;
+  }
+
+  @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or
+    (contain-intrinsic-size: 1px) /* Safari 17+ */ {
     & ::placeholder {
-      opacity: 1;
+      color: color-mix(in oklab, currentcolor 50%, transparent);
     }
+  }
 
-    @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or
-      (contain-intrinsic-size: 1px) /* Safari 17+ */ {
-      & ::placeholder {
-        color: color-mix(in oklab, currentcolor 50%, transparent);
-      }
-    }
-
-    & [hidden]:where(:not([hidden='until-found'])) {
-      display: none !important;
-    }
+  & [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
   }
 }
 
