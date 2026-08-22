@@ -1,0 +1,36 @@
+{
+  "name": "mindmaps/wordpress",
+  "description": "The Mind Maps WordPress plugin — functional PHP, REST-first.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": "^8.1"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.5",
+    "yoast/phpunit-polyfills": "^2.0 || ^3.0"
+  },
+  "autoload": {
+    "files": [
+      "plugin/mind-maps/src/document.php",
+      "plugin/mind-maps/src/post-type.php",
+      "plugin/mind-maps/src/repository.php",
+      "plugin/mind-maps/src/rest.php",
+      "plugin/mind-maps/src/assets.php",
+      "plugin/mind-maps/src/render.php",
+      "plugin/mind-maps/src/admin.php",
+      "plugin/mind-maps/src/plugin.php"
+    ]
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "scripts": {
+    "test": "phpunit --testsuite unit",
+    "test:integration": "phpunit --testsuite integration",
+    "lint": "@php -l plugin/mind-maps/mind-maps.php"
+  }
+}

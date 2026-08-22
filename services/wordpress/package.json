@@ -1,0 +1,23 @@
+{
+  "name": "@mindmaps/wordpress",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Mind Maps WordPress plugin: a `mind_map` post type, the `mindmaps/v1` REST namespace, a shortcode, a block and an admin editor screen.",
+  "scripts": {
+    "build": "node scripts/collect-assets.mjs",
+    "package": "node scripts/package.mjs",
+    "test": "node scripts/ensure-vendor.mjs && ./vendor/bin/phpunit --testsuite unit",
+    "test:integration": "node scripts/ensure-vendor.mjs && wp-env run tests-cli --env-cwd=wp-content/mind-maps-service ./vendor/bin/phpunit --testsuite integration",
+    "env:start": "wp-env start",
+    "env:stop": "wp-env stop",
+    "env:clean": "wp-env clean all",
+    "lint:php": "node scripts/lint-php.mjs"
+  },
+  "dependencies": {
+    "@mindmaps/wordpress-app": "workspace:*"
+  },
+  "devDependencies": {
+    "@wordpress/env": "^10.17.0"
+  }
+}

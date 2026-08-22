@@ -1,0 +1,85 @@
+# A plain WordPress + MariaDB stack for poking at the plugin by hand.
+#
+#   docker compose up -d          → http://localhost:8878
+#   docker compose down           → stop, keep the database
+#   docker compose down -v        → stop and wipe the database
+#
+# The plugin directory is bind-mounted, so an edit under `plugin/mind-maps`
+# shows up on the next request. Build the front-end bundle first — without
+# `plugin/mind-maps/assets` the mount point renders empty:
+#
+#   pnpm --filter @mindmaps/wordpress run build
+#
+# The automated integration suite does NOT use this stack; it runs on wp-env
+# (`pnpm --filter @mindmaps/wordpress run test:integration`).
+
+name: mind-maps
+
+services:
+  database:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  wordpress:
+    image: wordpress:6.7-php8.2-apache
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8878:80"
+    environment:
+      WORDPRESS_DB_HOST: database:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DEBUG: "1"
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'WP_DEBUG_LOG', true );
+        define( 'WP_DEBUG_DISPLAY', true );
+        define( 'SCRIPT_DEBUG', true );
+    volumes:
+      - wordpress:/var/www/html
+      - ./plugin/mind-maps:/var/www/html/wp-content/plugins/mind-maps
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost/wp-admin/install.php"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  cli:
+    image: wordpress:cli-php8.2
+    restart: "no"
+    profiles: ["cli"]
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: database:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+    volumes:
+      - wordpress:/var/www/html
+      - ./plugin/mind-maps:/var/www/html/wp-content/plugins/mind-maps
+    entrypoint: ["wp"]
+    command: ["--info"]
+
+volumes:
+  database:
+  wordpress:
