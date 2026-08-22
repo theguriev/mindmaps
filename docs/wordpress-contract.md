@@ -82,10 +82,20 @@ Cookie authentication plus the standard REST nonce: the plugin prints
 
 | Route | Capability |
 | --- | --- |
-| GET `/maps`, GET `/maps/<id>` | `read` + the map must be readable by the user (own map, or `edit_others_posts`) |
+| GET `/maps` | `read` + the list is scoped to the caller's own maps, or everyone's with `edit_others_posts` |
+| GET `/maps/<id>` | **published maps: anyone, signed in or not.** Otherwise `read` + own map, or `edit_others_posts` |
 | POST `/maps` | `edit_posts` |
 | PUT `/maps/<id>`, PUT `/maps/<id>/template` | `edit_post` for that post |
 | DELETE `/maps/<id>` | `delete_post` for that post |
+
+Reading a published map needs no account. That is what makes the shortcode and
+the block worth having — a map put into a post is meant to be seen by whoever
+reads the post, and most of them are not signed in — and it is what `publish`
+already means for the post a map is stored in. It grants reading only: writing
+still needs `edit_post`, a signed-out visitor has no usable nonce, and the app
+puts such an embed in read-only mode. Nothing else opens up: `GET /maps` still
+refuses a signed-out caller outright, so no one can enumerate a site's maps,
+and a draft, pending or private map stays with its author.
 
 A new map is created as `publish` when its creator has `publish_posts` and as
 `draft` otherwise. Contributors have `edit_posts` but not `publish_posts`, and

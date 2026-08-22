@@ -188,12 +188,31 @@ function can_create_map(): bool|WP_Error {
  * @return true|WP_Error
  */
 function can_read_map( WP_REST_Request $request ): bool|WP_Error {
-	if ( ! \current_user_can( 'read' ) ) {
-		return error_forbidden();
-	}
 	$post = Repository\find_map_post( request_id( $request ) );
 	if ( null === $post ) {
 		return error_not_found();
+	}
+
+	// A published map is readable by anyone, signed in or not.
+	//
+	// This is what makes the shortcode and the block worth having: a map put
+	// into a post is meant to be seen by whoever reads the post, and most of
+	// them are not logged in. Requiring `read` here meant every embed on a
+	// public site rendered "You do not have permission to open this mind map"
+	// to its actual audience.
+	//
+	// Reading is all it grants. Writing still needs `edit_post` on the map,
+	// and a signed-out visitor has no nonce, so the app puts the editor in
+	// read-only mode — the map can be panned, zoomed, folded and exported,
+	// and nothing that changes it can reach the API.
+	if ( 'publish' === $post->post_status ) {
+		return true;
+	}
+
+	// Everything else — a contributor's draft, a private map, one pending
+	// review — keeps the old rule: your own, or an editor's view of everyone's.
+	if ( ! \current_user_can( 'read' ) ) {
+		return error_forbidden();
 	}
 	return owns_or_supervises( (int) $post->post_author ) ? true : error_forbidden();
 }

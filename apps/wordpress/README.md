@@ -108,6 +108,12 @@ The canvas itself stays interactive — the engine has no read-only mode, so a
 read-only visitor can still drag nodes around locally. Nothing they do is
 persisted, and nothing they do can reach the REST API.
 
+This is the mode a **signed-out** reader gets. A published map is readable
+without an account, which is the point of embedding one in a post: the payload
+carries `canEdit: false`, every mount prints `data-can-edit="0"`, and the map
+can be read, panned, folded and exported but not changed. Nothing else is
+readable signed-out — not the map list, and not a draft.
+
 ## The block in the inserter
 
 `src/block.ts` is the editor half of the `mind-maps/map` block — the reason it
