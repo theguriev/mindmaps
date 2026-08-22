@@ -16,12 +16,25 @@ import { useOnResize } from '@/hooks/useOnResize'
 import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
 import { branch } from '@/mindmap/list'
+import { getNewPosition } from '@/mindmap/geometry'
+import {
+  CLIPBOARD_MIME,
+  clipBounds,
+  collectBranches,
+  outlineText,
+  outlineToNodes,
+  parseClipboard,
+  parseOutline,
+  remapForPaste
+} from '@/mindmap/clipboard'
+import { guid } from '@/utils/guid'
 import { getMap, saveMap } from '@/api/maps'
 import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import {
   ArrowLeftIcon,
   ChevronsDownUpIcon,
   CommandIcon,
+  CopyIcon,
   DownloadIcon,
   MaximizeIcon,
   PlusIcon,
@@ -209,6 +222,7 @@ function Editor ({ id }: { id: string }) {
     toggleCollapsed,
     reveal,
     reparentRoots,
+    insertNodes,
     setReaction,
     setEditing,
     pushSnapshot,
@@ -335,6 +349,22 @@ function Editor ({ id }: { id: string }) {
     setSelectedIds(new Set([nodeId]))
     const n = list.get(nodeId)
     if (n) viewport.centerOn(n.x, n.y)
+  }
+
+  // Clone the selected branches (fresh ids, +24/+24, same parents) and select
+  // the clones. One undo step.
+  const duplicateSelection = () => {
+    const roots = selectionRoots(list, selectedIds)
+    if (roots.length === 0) return
+    const clip = collectBranches(adjacency, roots)
+    const { nodes, roots: newRoots } = remapForPaste(clip, {
+      makeId: guid,
+      dx: 24,
+      dy: 24,
+      rootParent: 'keep'
+    })
+    insertNodes(nodes)
+    setSelectedIds(new Set(newRoots))
   }
 
   // Fold/unfold a branch; folding drops the now-hidden descendants from the
@@ -499,6 +529,98 @@ function Editor ({ id }: { id: string }) {
   useEvent('mouseup', endInteractions)
   useEvent('mouseleave', endInteractions)
 
+  // ---- Clipboard: copy / cut / paste branches ----
+  const isEditableTarget = (t: EventTarget | null) => {
+    const el = t as HTMLElement | null
+    if (!el || !el.tagName) return false
+    return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+  }
+
+  const viewCenter = () => ({
+    x: (width / 2 - viewport.offsetX) / viewport.scale,
+    y: (height / 2 - viewport.offsetY) / viewport.scale
+  })
+
+  // Serialize the selection into the clipboard: a full-fidelity JSON payload
+  // plus a plain-text indented outline. Returns the copied roots.
+  const copySelection = (event: ClipboardEvent): NodeId[] => {
+    if (editingNode || isEditableTarget(event.target)) return []
+    const roots = selectionRoots(list, selectedIds)
+    if (roots.length === 0 || !event.clipboardData) return []
+    const clip = collectBranches(adjacency, roots)
+    event.clipboardData.setData(CLIPBOARD_MIME, JSON.stringify(clip))
+    event.clipboardData.setData('text/plain', outlineText(clip))
+    event.preventDefault()
+    return roots
+  }
+
+  useEvent<ClipboardEvent>('copy', copySelection)
+
+  useEvent<ClipboardEvent>('cut', (event) => {
+    const roots = copySelection(event)
+    const deletable = roots.filter((id) => id !== 0)
+    if (deletable.length > 0) {
+      removeMany(deletable)
+      setSelectedIds(new Set())
+    }
+  })
+
+  useEvent<ClipboardEvent>('paste', (event) => {
+    if (editingNode || isEditableTarget(event.target)) return
+    const cd = event.clipboardData
+    if (!cd) return
+    const target = activeId != null ? list.get(activeId) : undefined
+    const asChildOf = target && !target.hidden ? target : undefined
+    // Where a branch pasted under `asChildOf` should land: the same radial
+    // slot a newly added child would get.
+    const childOrigin = () => {
+      const index = Array.from(list.values()).filter(
+        (n) => n.parent === asChildOf!.id
+      ).length
+      const pos = getNewPosition(index)
+      return { x: asChildOf!.x + pos.x, y: asChildOf!.y + pos.y }
+    }
+
+    const clip = parseClipboard(cd.getData(CLIPBOARD_MIME) || 'null')
+    if (clip) {
+      event.preventDefault()
+      const first = clip.nodes.find((n) => n.id === clip.roots[0])
+      if (!first) return
+      let dx: number
+      let dy: number
+      if (asChildOf) {
+        const origin = childOrigin()
+        dx = origin.x - first.x
+        dy = origin.y - first.y
+      } else {
+        const c = viewCenter()
+        const b = clipBounds(clip)
+        dx = c.x - (b.minX + b.maxX) / 2
+        dy = c.y - (b.minY + b.maxY) / 2
+      }
+      const { nodes, roots } = remapForPaste(clip, {
+        makeId: guid,
+        dx,
+        dy,
+        rootParent: asChildOf?.id
+      })
+      insertNodes(nodes)
+      setSelectedIds(new Set(roots))
+      return
+    }
+
+    // Plain text: parse as an indented outline → new branch / trees.
+    const text = cd.getData('text/plain')
+    if (!text.trim()) return
+    const rows = parseOutline(text)
+    if (rows.length === 0) return
+    event.preventDefault()
+    const origin = asChildOf ? childOrigin() : viewCenter()
+    const { nodes, roots } = outlineToNodes(rows, guid, origin, asChildOf?.id)
+    insertNodes(nodes)
+    setSelectedIds(new Set(roots))
+  })
+
   // Close the colour wheel on any click that isn't the one that opened it
   // (branch clicks stopPropagation) or a colour pick (wheel stopsPropagation).
   useEvent('click', () => {
@@ -605,6 +727,12 @@ function Editor ({ id }: { id: string }) {
       event.preventDefault()
       const n = activeId != null ? list.get(activeId) : null
       if (n) onToggleCollapsed(n)
+      return
+    }
+    // ⌘D — duplicate the selected branches next to the originals
+    if (event.metaKey && !event.shiftKey && event.code === 'KeyD' && !editing) {
+      event.preventDefault()
+      duplicateSelection()
       return
     }
     // ⌘K — command menu
@@ -734,6 +862,13 @@ function Editor ({ id }: { id: string }) {
         const n = activeId != null ? list.get(activeId) : null
         if (n) onToggleCollapsed(n)
       }
+    },
+    {
+      group: 'Edit',
+      label: 'Duplicate branch',
+      shortcut: '⌘D',
+      icon: CopyIcon,
+      run: duplicateSelection
     },
     { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
     { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },

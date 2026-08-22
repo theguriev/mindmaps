@@ -283,12 +283,18 @@ export function useAdjacency (initial: Adjacency) {
   }
 
   // Insert pre-built nodes (paste / duplicate) as one undo step. The caller is
-  // responsible for fresh ids and valid parent references.
+  // responsible for fresh ids and valid parent references. Folded nodes that
+  // receive new children unfold, so the insertion is visible.
   const insertNodes = (nodes: Array<RawNode & { id: NodeId }>) => {
     if (nodes.length === 0) return
     apply((prev) => {
       const next = new Map(prev)
       for (const n of nodes) next.set(n.id, { ...n })
+      for (const n of nodes) {
+        if (n.parent === undefined) continue
+        const parent = next.get(n.parent)
+        if (parent?.collapsed) next.set(n.parent, { ...parent, collapsed: undefined })
+      }
       return next
     }, true)
   }
