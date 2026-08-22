@@ -1,0 +1,405 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Button,
+  Input,
+  MapItem,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Separator,
+  Templates,
+  listTemplates,
+  prepareTemplate,
+  type MapDoc,
+  type TemplateDoc
+} from '@mindmaps/engine'
+// Subpath import: the editor is the heavy half of the engine, and importing it
+// from its own entry keeps that boundary visible even though this bundle ends
+// up as a single file (WordPress enqueues one script).
+import { MindMapEditor } from '@mindmaps/engine/editor'
+import { createWpStore, type MapStore } from '@mindmaps/storage'
+import { editingAllowed, intlLocale, type BootConfig } from './boot'
+import { describeStoreError } from './errors'
+
+/** Where an async load is, so loading and failure are always drawn. */
+type Loaded<T> =
+  | { status: 'loading' }
+  | { status: 'ready'; data: T }
+  | { status: 'failed'; error: unknown }
+
+/**
+ * A finished request, tagged with the request it answered.
+ *
+ * Each load is identified by a key (the map id plus a retry counter). Storing
+ * the key alongside the result is what lets the components below show "loading"
+ * for a request still in flight without resetting state from inside the effect,
+ * and it drops the answer to a request nobody is waiting for any more.
+ */
+type Answer<T> = { key: string; value: Loaded<T> }
+
+function answerFor<T> (answer: Answer<T> | null, key: string): Loaded<T> {
+  return answer?.key === key ? answer.value : { status: 'loading' }
+}
+
+function Spinner ({ label }: { label: string }) {
+  return (
+    <div
+      className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-muted-foreground"
+      role="status"
+    >
+      <div className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+      <span className="text-sm">{label}</span>
+    </div>
+  )
+}
+
+function Failure ({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const notice = describeStoreError(error)
+  return (
+    <div
+      className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center"
+      role="alert"
+    >
+      <div className="text-3xl opacity-60">⚠️</div>
+      <div className="max-w-md font-medium">{notice.title}</div>
+      {notice.detail && (
+        <div className="max-w-md text-xs text-muted-foreground">{notice.detail}</div>
+      )}
+      {notice.retryable && (
+        <Button variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** Sits below the editor's toolbar, out of the way of its own controls. */
+function ReadOnlyBadge () {
+  return (
+    <div className="absolute top-16 left-3 z-40 rounded-md border bg-background/95 px-2 py-1 text-xs text-muted-foreground shadow-sm">
+      Read-only
+    </div>
+  )
+}
+
+function MapView ({
+  store,
+  id,
+  canEdit,
+  onBack
+}: {
+  store: MapStore
+  id: string
+  canEdit: boolean
+  onBack?: () => void
+}) {
+  const [answer, setAnswer] = useState<Answer<MapDoc | null> | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const key = `${id}#${attempt}`
+
+  useEffect(() => {
+    let live = true
+    store.get(id).then(
+      (doc) => {
+        if (live) setAnswer({ key, value: { status: 'ready', data: doc } })
+      },
+      (error: unknown) => {
+        if (live) setAnswer({ key, value: { status: 'failed', error } })
+      }
+    )
+    return () => {
+      live = false
+    }
+  }, [store, id, key])
+
+  const state = answerFor(answer, key)
+
+  if (state.status === 'loading') return <Spinner label="Loading mind map…" />
+  if (state.status === 'failed') {
+    return <Failure error={state.error} onRetry={() => setAttempt((n) => n + 1)} />
+  }
+  if (state.data === null) {
+    return (
+      <div className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="text-3xl opacity-60">🗺️</div>
+        <div className="font-medium">This mind map is not available.</div>
+        {onBack && (
+          <Button variant="outline" onClick={onBack}>
+            Back to maps
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="absolute inset-0">
+      <MindMapEditor
+        // Key by id so switching maps fully remounts the editor (re-seeds state).
+        key={id}
+        doc={state.data}
+        // `readOnly` makes the editor itself inert — every mutating gesture,
+        // shortcut and affordance, not just the save button — so a visitor
+        // without `edit_post` cannot reach the store at all. The REST
+        // capability checks remain the actual boundary.
+        readOnly={!canEdit}
+        onSave={async (next) => {
+          await store.save(id, next)
+        }}
+        onBack={onBack}
+        className="absolute inset-0"
+      />
+      {!canEdit && <ReadOnlyBadge />}
+    </div>
+  )
+}
+
+/** A map row for visitors who may not touch anything. */
+function ReadOnlyMapItem ({
+  map,
+  locale,
+  onGo
+}: {
+  map: MapDoc
+  locale?: string
+  onGo: (map: MapDoc) => void
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col items-start">
+          <Button
+            variant="link"
+            className="h-auto p-0 text-xl"
+            onClick={() => onGo(map)}
+          >
+            {map.title}
+          </Button>
+          {map.modified && (
+            <span className="text-xs text-muted-foreground">
+              Updated {new Date(map.modified).toLocaleString(locale)}
+            </span>
+          )}
+        </div>
+      </div>
+      <Separator className="my-4" />
+    </div>
+  )
+}
+
+function MapList ({
+  store,
+  canEdit,
+  locale,
+  onOpen
+}: {
+  store: MapStore
+  canEdit: boolean
+  locale?: string
+  onOpen: (id: string) => void
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [answer, setAnswer] = useState<Answer<MapDoc[]> | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const [filterText, setFilterText] = useState('')
+  // A failed mutation must not vanish: the list's own controls hand back a
+  // callback rather than a promise, so a rejection here has nowhere else to go.
+  const [actionError, setActionError] = useState<unknown>(null)
+  const key = `list#${attempt}`
+
+  useEffect(() => {
+    let live = true
+    store.list().then(
+      (maps) => {
+        if (live) setAnswer({ key, value: { status: 'ready', data: maps } })
+      },
+      (error: unknown) => {
+        if (live) setAnswer({ key, value: { status: 'failed', error } })
+      }
+    )
+    return () => {
+      live = false
+    }
+  }, [store, key])
+
+  // There is no route loader to invalidate here, so a mutation re-runs the
+  // effect instead of keeping a second copy of the list in component state.
+  const reload = () => setAttempt((n) => n + 1)
+
+  const state = answerFor(answer, key)
+
+  if (state.status === 'loading') return <Spinner label="Loading mind maps…" />
+  if (state.status === 'failed') {
+    return <Failure error={state.error} onRetry={reload} />
+  }
+
+  const maps = state.data
+  const needle = filterText.toLocaleLowerCase()
+  const filteredMaps = maps.filter((el) =>
+    (el.title ?? '').toLocaleLowerCase().includes(needle)
+  )
+  const templates = listTemplates(maps)
+
+  const go = (map: MapDoc) => onOpen(String(map.id))
+
+  /**
+   * Runs a mutation, surfacing its failure instead of dropping the rejection.
+   *
+   * The list is re-read either way. A mutation that failed is exactly when the
+   * list on screen is least trustworthy — somebody else may have deleted or
+   * renamed the map this one tripped over — so refreshing it is part of
+   * reporting the failure, not part of the success path.
+   */
+  const act = async (work: () => Promise<void>, done?: () => void) => {
+    setActionError(null)
+    try {
+      await work()
+    } catch (error) {
+      setActionError(error)
+    } finally {
+      reload()
+      done?.()
+    }
+  }
+
+  const remove = (map: MapDoc, done: () => void) =>
+    act(async () => {
+      await store.remove([String(map.id)])
+    }, done)
+
+  const setTemplateFlag = (map: MapDoc, template: string, done: () => void) =>
+    act(async () => {
+      await store.save(String(map.id), { ...map, meta: { template } })
+    }, done)
+
+  const chooseTemplate = (template: TemplateDoc) =>
+    act(async () => {
+      // A new map is centred on the box the embed occupies, which is what the
+      // editor will show a moment later.
+      const el = rootRef.current
+      const w = el?.offsetWidth ?? 960
+      const h = el?.offsetHeight ?? 600
+      const doc = await store.create(
+        prepareTemplate(template, { centerX: w / 2, centerY: h / 2 }, maps.length + 1)
+      )
+      onOpen(String(doc.id))
+    })
+
+  return (
+    <div ref={rootRef} className="h-full overflow-auto">
+      <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
+        <div className="flex items-center">
+          <span className="mr-3 text-3xl">🧠</span>
+          <h1 className="text-3xl font-bold">Mind maps</h1>
+        </div>
+        <Separator className="my-4" />
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Find a map..."
+          />
+          {/* Creating a map is a write: without `edit_posts` the REST call
+              would 403, so the affordance is absent rather than broken. */}
+          {canEdit && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button>New</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-3" align="end">
+                <Templates templates={templates} onChoose={chooseTemplate} />
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+        {actionError !== null && (
+          <div
+            className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+            role="alert"
+          >
+            {describeStoreError(actionError).title}
+          </div>
+        )}
+        <Separator className="my-4" />
+        {maps.length > 0 ? (
+          <div className="flex flex-col">
+            {filteredMaps.map((map) =>
+              // `MapItem` is the editing row — it owns the star and remove
+              // buttons. A read-only visitor gets a row without them instead
+              // of the same row with dead controls.
+              canEdit ? (
+                <MapItem
+                  key={String(map.id)}
+                  map={map}
+                  onGo={go}
+                  onRemove={remove}
+                  onStar={(m, done) => setTemplateFlag(m, '1', done)}
+                  onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
+                />
+              ) : (
+                <ReadOnlyMapItem
+                  key={String(map.id)}
+                  map={map}
+                  locale={locale}
+                  onGo={go}
+                />
+              )
+            )}
+          </div>
+        ) : (
+          <div className="py-10 text-center text-muted-foreground">
+            <div className="text-4xl opacity-50">🗂️</div>
+            <div>{canEdit ? 'No maps yet — create one!' : 'No maps to show.'}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The embed's two states. There is no router on a WordPress page — the URL
+ * belongs to the post — so which map is open is component state, seeded from
+ * the mount point's `data-map-id` (or the boot payload's `mapId`).
+ *
+ * `canEdit` arrives per mount too (`main.tsx` resolves it from the mount
+ * point's `data-can-edit`): one page can carry a map the visitor owns next to
+ * somebody else's, so a page-wide answer would be wrong for one of them.
+ */
+export function App ({
+  boot,
+  mapId,
+  canEdit
+}: {
+  boot: BootConfig
+  mapId?: string
+  canEdit?: boolean
+}) {
+  const store = useMemo(
+    () => createWpStore({ root: boot.root, nonce: boot.nonce }),
+    [boot.root, boot.nonce]
+  )
+  const mayEdit = canEdit ?? editingAllowed(boot)
+  const locale = intlLocale(boot)
+
+  // A pinned map is the whole embed: there is no list behind it to go back to.
+  const pinned = mapId !== undefined
+  const [openId, setOpenId] = useState<string | undefined>(mapId)
+
+  if (openId !== undefined) {
+    return (
+      <MapView
+        store={store}
+        id={openId}
+        canEdit={mayEdit}
+        onBack={pinned ? undefined : () => setOpenId(undefined)}
+      />
+    )
+  }
+
+  return (
+    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
+  )
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@mindmaps/storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Map persistence backends: the MapStore contract with localStorage and WordPress REST implementations.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src"],
+  "scripts": {
+    "type-check": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@mindmaps/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@mindmaps/config": "workspace:*",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

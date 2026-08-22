@@ -1,0 +1,258 @@
+/* ---------------------------------------------------------------------------
+   The embed's stylesheet.
+
+   WordPress enqueues this file on every page that carries a map — next to the
+   theme, the block library and any number of other plugins. It is not the
+   page's stylesheet, so it must not act like one: nothing in here may style an
+   element the embed does not own.
+
+   That rules out Tailwind's Preflight. The engine's own stylesheet pulls it in
+   through `@import 'tailwindcss'`, which is right for the standalone SPA (it
+   owns its document) and wrong here: Preflight zeroes margins and padding on
+   `*`, strips heading sizes, unstyles lists and links and rewrites form
+   controls — document-wide. So this file assembles Tailwind by hand instead:
+
+     theme     → the design tokens the utilities compile against
+     utilities → the utility classes themselves
+     (base)    → deliberately absent; Preflight is never imported
+
+   and adds back, under `.mind-maps-app` (the class `main.tsx` puts on every
+   mount container) and the Radix portals that render outside it, only the
+   resets the engine's markup actually relies on.
+
+   Dropping the engine's `@import` also drops its `@source`, so its sources are
+   registered explicitly below — without that, every utility class its
+   components use would be missing from this build.
+   --------------------------------------------------------------------------- */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tw-animate-css';
+
+/* Class detection: the engine's components (a workspace package, whose source
+   Tailwind's automatic detection skips) and this app's own sources. */
+@source '../../../packages/engine/src';
+@source './';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Kept byte-for-byte in step with `packages/engine/src/styles.css` — they are
+   duplicated rather than imported because that file's first line is the
+   `@import 'tailwindcss'` this bundle must not have. `styles.test.ts` fails if
+   the two ever drift.
+
+   These are custom properties only: declaring them on `:root` changes nothing
+   the host page draws, and the portals below need them, since Radix renders
+   into `<body>`, outside every mount container.
+   --------------------------------------------------------------------------- */
+:root {
+  --radius: 0.375rem;
+
+  --background: #ffffff;
+  --foreground: #303133;
+
+  --card: #ffffff;
+  --card-foreground: #303133;
+
+  --popover: #ffffff;
+  --popover-foreground: #303133;
+
+  /* Brand blue carried over from the original app (--primary #409EFF). */
+  --primary: #409eff;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f5f7fa;
+  --secondary-foreground: #303133;
+
+  --muted: #f5f7fa;
+  --muted-foreground: #909399;
+
+  --accent: #f2f6fc;
+  --accent-foreground: #303133;
+
+  --destructive: #f56c6c;
+
+  --border: #e4e7ed;
+  --input: #dcdfe6;
+  --ring: #409eff;
+}
+
+@theme inline {
+  --font-sans: 'Open Sans', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* ---------------------------------------------------------------------------
+   Scoped Preflight.
+
+   Everything below sits in the `base` layer, exactly where Preflight sat, so
+   the utilities keep winning over it and the host theme's own (unlayered)
+   rules keep winning over the utilities — the cascade the engine's components
+   were built against, only reachable from inside the embed.
+
+   The scope is the mount container plus the Radix portal roots: popovers,
+   dropdowns, tooltips and the ⌘K/search dialogs are rendered into `<body>`,
+   outside `.mind-maps-app`, and their `data-slot` attributes are written by
+   the engine's own components — no page element carries them.
+   --------------------------------------------------------------------------- */
+@layer base {
+  .mind-maps-app,
+  [data-slot='popover-content'],
+  [data-slot='dropdown-menu-content'],
+  [data-slot='tooltip-content'],
+  [data-slot='dialog-portal'],
+  [data-slot='dialog-overlay'],
+  [data-slot='dialog-content'] {
+    /* Preflight's universal reset. Every layout in the engine assumes
+       border-box sizing and no inherited margin or padding, and a `border-*`
+       utility only sets the width — the colour comes from here, as it does in
+       the engine's own `* { @apply border-border outline-ring/50 }`. */
+    &,
+    &::before,
+    &::after,
+    & *,
+    & ::before,
+    & ::after,
+    & ::backdrop,
+    & ::file-selector-button {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      border: 0 solid;
+      @apply border-border outline-ring/50;
+    }
+
+    /* Headings, lists and links are sized and coloured by utility classes on
+       the engine's markup, which expects the browser's defaults gone. */
+    & :is(h1, h2, h3, h4, h5, h6) {
+      font-size: inherit;
+      font-weight: inherit;
+    }
+
+    & :is(ol, ul, menu) {
+      list-style: none;
+    }
+
+    & a {
+      color: inherit;
+      -webkit-text-decoration: inherit;
+      text-decoration: inherit;
+    }
+
+    /* `display: block` on replaced elements is what keeps the canvas free of
+       the inline baseline gap and lucide's icons aligned inside buttons. */
+    & :is(img, svg, video, canvas, audio, iframe, embed, object) {
+      display: block;
+      vertical-align: middle;
+    }
+
+    & :is(img, video) {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Form controls do not inherit typography on their own, and the engine's
+       buttons and inputs are styled as if they did. */
+    & :is(button, input, select, optgroup, textarea),
+    & ::file-selector-button {
+      font: inherit;
+      font-feature-settings: inherit;
+      font-variation-settings: inherit;
+      letter-spacing: inherit;
+      color: inherit;
+      border-radius: 0;
+      background-color: transparent;
+      opacity: 1;
+    }
+
+    & :is(button, input:where([type='button'], [type='reset'], [type='submit'])),
+    & ::file-selector-button {
+      appearance: button;
+    }
+
+    & textarea {
+      resize: vertical;
+    }
+
+    & ::placeholder {
+      opacity: 1;
+    }
+
+    @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or
+      (contain-intrinsic-size: 1px) /* Safari 17+ */ {
+      & ::placeholder {
+        color: color-mix(in oklab, currentcolor 50%, transparent);
+      }
+    }
+
+    & [hidden]:where(:not([hidden='until-found'])) {
+      display: none !important;
+    }
+  }
+}
+
+/* The mount container. The embed paints its own box: the host's body carries
+   the theme's typography and colours, and the engine's UI was designed against
+   these tokens, not against whatever the theme happens to set. */
+.mind-maps-app {
+  position: relative;
+  /* A fresh stacking context: the editor's toolbars and popovers stack among
+     themselves without competing with a sticky theme header. */
+  isolation: isolate;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: left;
+  /* The plugin sets the height (the shortcode's `height` attribute); this is
+     the floor for when it does not, so a mount point is never a zero-pixel
+     sliver. The editor is absolutely positioned inside this box, and the map
+     list scrolls within it. */
+  min-height: 420px;
+}
+
+/* Radix renders popovers, dropdowns, tooltips, the ⌘K palette and the search
+   dialog into a portal on `body` — outside the container above, so they
+   inherit the theme's typography instead of ours, and their `z-50` sits under
+   the sticky headers themes like to park at 9999. These selectors match the
+   engine's own markup (its `data-slot` attributes), not page elements. */
+[data-slot='popover-content'],
+[data-slot='dropdown-menu-content'],
+[data-slot='tooltip-content'],
+[data-slot='dialog-content'],
+[data-slot='dialog-overlay'] {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  z-index: 100000;
+}

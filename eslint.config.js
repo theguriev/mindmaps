@@ -5,7 +5,12 @@ import globals from 'globals'
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', 'src/routeTree.gen.ts']
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/routeTree.gen.ts',
+      'services/wordpress/vendor/**'
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,0 +1,4 @@
+{
+  "extends": "@mindmaps/config/tsconfig/react.json",
+  "include": ["src"]
+}
