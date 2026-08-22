@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileQuestionMarkIcon,
   LoaderCircleIcon,
@@ -14,6 +14,7 @@ import {
   templateFromDoc,
   type MapDoc,
   type MapSummary,
+  type MenuCommand,
   type TemplateChoice
 } from '@mindmaps/engine'
 // Subpath import: the editor is the heavy half of the engine, and importing it
@@ -31,6 +32,7 @@ import {
   type BootConfig
 } from './boot'
 import { describeStoreError } from './errors'
+import { commandName, commandStore, registerCommands } from './commands'
 
 /** Where an async load is, so loading and failure are always drawn. */
 type Loaded<T> =
@@ -94,6 +96,40 @@ function ReadOnlyBadge () {
   )
 }
 
+/**
+ * Hands the editor's commands to WordPress's palette, where there is one.
+ *
+ * Returns the props to spread onto the editor: `onCommands` in the admin,
+ * nothing on the front end — and "nothing" is what leaves the editor's own ⌘K
+ * palette in place, which is the only palette a shortcode embed has.
+ *
+ * The registration is keyed on which commands exist, not on the array the
+ * editor hands over: that is rebuilt every render, and re-registering forty
+ * commands per keystroke to change nothing is not a trade worth making. What
+ * the palette actually calls goes through the ref, so a command registered
+ * once still runs the current version of itself.
+ */
+function useWordPressCommands (): { onCommands?: (commands: MenuCommand[]) => void } {
+  const store = useMemo(() => commandStore(), [])
+  const latest = useRef<MenuCommand[]>([])
+  const [names, setNames] = useState<string[]>([])
+
+  const onCommands = useCallback((commands: MenuCommand[]) => {
+    latest.current = commands
+    const next = commands.map(commandName)
+    setNames((prev) =>
+      prev.length === next.length && prev.every((name, i) => name === next[i]) ? prev : next
+    )
+  }, [])
+
+  useEffect(() => {
+    if (store === null || names.length === 0) return
+    return registerCommands(store, names, () => latest.current)
+  }, [store, names])
+
+  return store === null ? {} : { onCommands }
+}
+
 function MapView ({
   store,
   id,
@@ -105,6 +141,7 @@ function MapView ({
   canEdit: boolean
   onBack?: () => void
 }) {
+  const wordPressCommands = useWordPressCommands()
   const [answer, setAnswer] = useState<Answer<MapDoc | null> | null>(null)
   const [attempt, setAttempt] = useState(0)
   const key = `${id}#${attempt}`
@@ -162,6 +199,7 @@ function MapView ({
           await store.save(id, next)
         }}
         onBack={onBack}
+        {...wordPressCommands}
         className="absolute inset-0"
       />
       {!canEdit && <ReadOnlyBadge />}

@@ -107,6 +107,32 @@ The canvas itself stays interactive — the engine has no read-only mode, so a
 read-only visitor can still drag nodes around locally. Nothing they do is
 persisted, and nothing they do can reach the REST API.
 
+## One command palette, not two
+
+The admin answers ⌘K with WordPress' own "Search commands and settings", and
+the editor used to answer it as well. Which of the two you got depended on
+where the focus happened to be, and neither knew about the other's actions.
+
+So in the admin the editor stands down: `onCommands` hands its command list
+over, which suppresses its own palette and leaves the shortcut alone, and
+`src/commands.ts` registers the list into the `core/commands` store — where the
+map's actions sit beside "Go to: Posts" as `Mind map: Undo (⌘Z)` and the rest.
+They are registered while a map is open and taken back when it closes.
+
+Two details are not incidental:
+
+- The palette calls through a ref rather than the closure registration saw. The
+  editor rebuilds its commands on every render, and `undo` from three renders
+  ago undoes the wrong thing; registering is keyed on which commands exist, so
+  it happens when the set changes rather than on every keystroke.
+- Icons are dropped. They are components from this bundle's React, and the
+  palette renders them with WordPress' — a different copy, which does not
+  recognise the other's elements.
+
+None of this happens on the front end: `wp-commands` is not loaded there, so
+`commandStore()` finds nothing, the editor keeps its own ⌘K palette, and a
+shortcode embed is unaffected.
+
 ## CSS in somebody else's page
 
 The engine's stylesheet is written for the standalone editor, where owning

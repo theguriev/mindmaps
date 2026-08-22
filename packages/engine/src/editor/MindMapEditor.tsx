@@ -222,6 +222,21 @@ export interface MindMapEditorProps {
   autoFocus?: boolean
   /** Host-specific entries appended to the ⌘K palette. */
   extraCommands?: MenuCommand[]
+  /**
+   * Take over the command palette.
+   *
+   * Called with the editor's commands whenever they change, and it means the
+   * host is presenting them: the built-in ⌘K palette is not rendered and the
+   * shortcut is left alone. That is what a host with a palette of its own
+   * needs — the WordPress admin already answers ⌘K with "Search commands and
+   * settings", and two palettes on one shortcut is a coin toss decided by
+   * where the focus happens to be.
+   *
+   * The list is rebuilt on every render, so a host that registers these
+   * somewhere should key on their labels and call through a ref rather than
+   * re-register on identity.
+   */
+  onCommands?: (commands: MenuCommand[]) => void
   /** Class for the editor's root element. Defaults to filling its offset
    *  parent, which is what a full-page host wants; embeds pass their own. */
   className?: string
@@ -264,6 +279,7 @@ export function MindMapEditor ({
   readOnly = false,
   autoFocus = false,
   extraCommands,
+  onCommands,
   className = 'absolute inset-0'
 }: MindMapEditorProps) {
   // Opt out of the React Compiler: this component bridges into the custom canvas
@@ -978,8 +994,9 @@ export function MindMapEditor ({
       duplicateSelection()
       return
     }
-    // ⌘K — command menu
-    if (event.metaKey && event.code === 'KeyK') {
+    // ⌘K — command menu. Left untouched when a host presents the commands
+    // itself, so its own palette answers the shortcut.
+    if (event.metaKey && event.code === 'KeyK' && onCommands === undefined) {
       event.preventDefault()
       setCommandOpen((open) => !open)
       return
@@ -1143,6 +1160,13 @@ export function MindMapEditor ({
     ...(extraCommands ?? [])
   ]
 
+  // Handed over after every commit, not when the list looks different: what
+  // changes on most renders is not which commands exist but what they close
+  // over, and a host running last render's `undo` would undo the wrong thing.
+  useEffect(() => {
+    onCommands?.(commands)
+  })
+
   return (
     <div
       ref={setRootEl}
@@ -1158,7 +1182,9 @@ export function MindMapEditor ({
         rootEl?.focus({ preventScroll: true })
       }}
     >
-      <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      {onCommands === undefined && (
+        <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      )}
       <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
       {/* Nothing above the canvas: the map owns the whole surface and the
           controls float over it, so an embed spends none of its host's page on
@@ -1221,14 +1247,19 @@ export function MindMapEditor ({
               <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Command menu (⌘K)"
-            onClick={() => setCommandOpen(true)}
-          >
-            <CommandIcon aria-hidden="true" />
-          </Button>
+          {/* Gone when a host presents the commands: the button would open a
+              palette that is no longer rendered, and the host's own — which
+              answers the same ⌘K — advertises itself. */}
+          {onCommands === undefined && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Command menu (⌘K)"
+              onClick={() => setCommandOpen(true)}
+            >
+              <CommandIcon aria-hidden="true" />
+            </Button>
+          )}
         </Island>
       </div>
       <div
