@@ -1,5 +1,5 @@
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { PlusIcon, SmilePlusIcon } from 'lucide-react'
+import { PlusIcon, SmilePlusIcon, StickyNoteIcon } from 'lucide-react'
 import { Button } from './ui/button'
 import {
   Popover,
@@ -16,6 +16,7 @@ import { EmojiPicker } from './EmojiPicker'
 
 interface CreateToolbarProps {
   onAddRoot: () => void
+  onAddSticky: () => void
   onReactionDragStart: (emoji: string, e: ReactPointerEvent) => void
 }
 
@@ -40,9 +41,14 @@ const Divider = () => (
   />
 )
 
-/** Bottom-centre toolbar: add-root (+) and a set of draggable emoji reactions
+/** Bottom-centre toolbar: everything that puts something new on the canvas —
+ *  add-root (+), a sticky note, and a set of draggable emoji reactions
  *  (recently used) plus a picker to choose any emoji. */
-export function CreateToolbar ({ onAddRoot, onReactionDragStart }: CreateToolbarProps) {
+export function CreateToolbar ({
+  onAddRoot,
+  onAddSticky,
+  onReactionDragStart
+}: CreateToolbarProps) {
   const [recents, setRecents] = useState<string[]>(loadRecents)
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -81,6 +87,21 @@ export function CreateToolbar ({ onAddRoot, onReactionDragStart }: CreateToolbar
           </Button>
         </TooltipTrigger>
         <TooltipContent>Add root node</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Add sticky note"
+            onClick={onAddSticky}
+            className="ml-1 size-10 rounded-xl text-foreground/80 hover:bg-muted hover:text-foreground/80"
+          >
+            <StickyNoteIcon className="size-5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Add sticky note</TooltipContent>
       </Tooltip>
       <Divider />
       <div className="flex items-center gap-0.5">

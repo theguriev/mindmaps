@@ -15,9 +15,11 @@ import '@mindmaps/engine/styles.css'
 />
 ```
 
-The host owns loading and persistence; the editor owns everything between. A
-`Promise` returned from `onSave` drives the save button's saving/failed states,
-so a network backend needs no extra UI.
+The host owns loading and persistence; the editor owns everything between.
+`onSave` is called on its own, a beat after the map stops changing and once
+more when the editor closes — there is no save button. The `Promise` it returns
+drives the "Saving…" and "Not saved — retry" states beside the title, so a
+network backend needs no extra UI.
 
 ## Layout
 

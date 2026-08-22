@@ -1,6 +1,7 @@
 import type {} from '../renderer/jsx'
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -33,7 +34,8 @@ import type {
   MapDoc,
   MindNode,
   NodeId,
-  PathEdge
+  PathEdge,
+  RawNode
 } from '../mindmap/types'
 import {
   ArrowLeftIcon,
@@ -199,8 +201,11 @@ export interface MindMapEditorProps {
   /** The document to edit. The host loads it from wherever it lives
    *  (localStorage, the WordPress REST API, a file) and hands it over here. */
   doc: MapDoc
-  /** Persist the edited document. May be async — the toolbar reflects the
-   *  in-flight and failed states, so a network backend needs no extra UI. */
+  /** Persist the edited document. Called on its own, a beat after the map
+   *  stops changing, and once more on the way out — nobody presses a button to
+   *  keep their own work. May be async: the in-flight and failed states are
+   *  shown beside the title, so a network backend needs no extra UI, and a
+   *  rejection leaves the map dirty so the next change retries it. */
   onSave: (doc: MapDoc) => void | Promise<void>
   /** Back affordance. Omitted (e.g. embedded in a WordPress page) → no button
    *  and no "Back to maps" command. */
@@ -223,6 +228,29 @@ export interface MindMapEditorProps {
 }
 
 type SaveState = 'idle' | 'saving' | 'error'
+
+/** How long the map has to stop changing before it is written. Long enough
+ *  that typing a word is one save, short enough that nobody outruns it. */
+const AUTOSAVE_DELAY = 800
+
+/**
+ * What autosave compares to decide the map changed.
+ *
+ * `editing` is left out on purpose: it rides along in the adjacency so the
+ * renderer knows which node has an open editor, and clicking into a node is
+ * not an edit. Nothing persists it either — both parsers drop it — so a save
+ * triggered by it would write a document identical to the stored one.
+ */
+function contentKey (content: Array<[NodeId, RawNode]>): string {
+  return JSON.stringify(
+    content.map(([id, node]) => {
+      if (node.editing === undefined) return [id, node]
+      const { editing: _editing, ...rest } = node
+      void _editing
+      return [id, rest]
+    })
+  )
+}
 
 /**
  * The whole mind-map editing experience — canvas scene, text overlay, toolbars,
@@ -264,6 +292,16 @@ export function MindMapEditor ({
   const [saveState, setSaveState] = useState<SaveState>('idle')
 
   const initial = new Map(doc.content ?? [])
+
+  /**
+   * The content that is already stored, as `contentKey` sees it.
+   *
+   * Seeded from the document the host handed over — which is by definition
+   * what the backend already has, so an editor that is opened and closed
+   * writes nothing. The same seed `useAdjacency` takes, and it is read once
+   * for the same reason: a host that swaps the document swaps the editor.
+   */
+  const [savedKey, setSavedKey] = useState(() => contentKey(Array.from(initial.entries())))
   const {
     adjacency,
     list,
@@ -776,23 +814,37 @@ export function MindMapEditor ({
 
   // ---- Save ----
   // The map's title mirrors its root node's text. `onSave` may be async (a
-  // REST backend); the toolbar shows the in-flight/failed state so a slow or
-  // rejected save is never silent.
+  // REST backend); the title island shows the in-flight/failed state so a slow
+  // or rejected save is never silent.
   const save = () => {
     if (readOnly) return
     const root = adjacency.get(0)
+    const content = Array.from(adjacency.entries())
     const next: MapDoc = {
       ...doc,
       title: root?.name ?? doc.title,
-      content: Array.from(adjacency.entries()),
+      content,
       modified: new Date().toISOString()
     }
+
+    // Claimed before the write, not after: a save that is in flight has
+    // already covered these changes, and re-scheduling them would send the
+    // same document twice. A failure puts the claim back, which is what makes
+    // the map dirty again and the retry send the newest version of it.
+    const previous = savedKey
+    setSavedKey(contentKey(content))
+
     let result: void | Promise<void>
+    const failed = (error: unknown) => {
+      setSavedKey(previous)
+      setSaveState('error')
+      console.error('[mind-maps] save failed', error)
+    }
+
     try {
       result = onSave(next)
     } catch (error) {
-      setSaveState('error')
-      console.error('[mind-maps] save failed', error)
+      failed(error)
       return
     }
     if (!(result instanceof Promise)) {
@@ -800,14 +852,46 @@ export function MindMapEditor ({
       return
     }
     setSaveState('saving')
-    result.then(
-      () => setSaveState('idle'),
-      (error: unknown) => {
-        setSaveState('error')
-        console.error('[mind-maps] save failed', error)
-      }
-    )
+    result.then(() => setSaveState('idle'), failed)
   }
+
+  // ---- Autosave ----
+  // Nobody should have to remember to press a button to keep their own work.
+  // The map is written a beat after the last change, which is what makes the
+  // save button unnecessary rather than merely hidden.
+  //
+  // `contentKey` decides what counts as a change, and it is not the adjacency's
+  // identity: entering and leaving a node's editor replaces the map without
+  // altering it, and clicking into a node is not an edit.
+  //
+  // Memoized on the adjacency, which only changes when the map does. This
+  // component opts out of the compiler (`use no memo`), and serializing the
+  // whole map on every render would put it in the path of every pan and drag.
+  const currentKey = useMemo(() => contentKey(Array.from(adjacency.entries())), [adjacency])
+  const dirty = savedKey !== currentKey
+
+  // What the flush on the way out has to read: a cleanup closes over the
+  // render that created it, and the last change is exactly the one that would
+  // be missing from it. Written in an effect rather than during render —
+  // a render that never commits must not be able to leave a value behind.
+  const flushRef = useRef({ save, dirty })
+  useEffect(() => {
+    flushRef.current = { save, dirty }
+  })
+
+  useEffect(() => {
+    if (readOnly || !dirty) return
+    const timer = setTimeout(() => flushRef.current.save(), AUTOSAVE_DELAY)
+    return () => clearTimeout(timer)
+  }, [readOnly, dirty, currentKey])
+
+  useEffect(() => {
+    // Leaving the editor is when the debounce would lose the most: closing a
+    // map a keystroke after typing in it must not be the way to discard it.
+    return () => {
+      if (flushRef.current.dirty) flushRef.current.save()
+    }
+  }, [])
 
   // World-space bounding box of all visible nodes (for zoom-to-fit).
   const contentBounds = () => {
@@ -1028,7 +1112,9 @@ export function MindMapEditor ({
         },
         { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
         { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
-        { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save }
+        // The map saves itself; this is for the hand that reaches for ⌘S
+        // anyway, and for getting a failed save back on its feet.
+        { group: 'File', label: 'Save now', shortcut: '⌘S', icon: SaveIcon, run: save }
       ]
 
   const commands: MenuCommand[] = [
@@ -1057,13 +1143,6 @@ export function MindMapEditor ({
     ...(extraCommands ?? [])
   ]
 
-  const SaveIndicator =
-    saveState === 'saving'
-      ? LoaderCircleIcon
-      : saveState === 'error'
-        ? TriangleAlertIcon
-        : SaveIcon
-
   return (
     <div
       ref={setRootEl}
@@ -1086,7 +1165,7 @@ export function MindMapEditor ({
           a title bar. The rows themselves let pointer events through — only the
           islands inside them take clicks. */}
       <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
-        {(onBack !== undefined || rootNode !== undefined) && (
+        {(onBack !== undefined || rootNode !== undefined || saveState !== 'idle') && (
         <Island className="min-w-0 gap-1">
           {onBack && (
             <>
@@ -1102,48 +1181,32 @@ export function MindMapEditor ({
           {rootNode && (
             <h1 className="truncate px-2 text-sm font-semibold">{rootNode.name}</h1>
           )}
+          {/* The map saves itself, so there is nothing to press and nothing to
+              say while that is going well. The two states worth a word are the
+              one you might be waiting on and the one that lost your work — the
+              second is a button, because a failed save is only news if you can
+              do something about it. */}
+          {saveState === 'saving' && (
+            <span className="flex shrink-0 items-center gap-1.5 px-2 text-xs text-muted-foreground">
+              <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+              Saving…
+            </span>
+          )}
+          {saveState === 'error' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Save failed — retry (⌘S)"
+              onClick={save}
+            >
+              <TriangleAlertIcon className="size-3.5" aria-hidden="true" />
+              Not saved — retry
+            </Button>
+          )}
         </Island>
         )}
         <Island className="gap-1">
-          {!readOnly && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Add sticky note"
-                onClick={onAddSticky}
-              >
-                <StickyNoteIcon aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={
-                  saveState === 'error'
-                    ? 'Save failed — click to retry (⌘S)'
-                    : saveState === 'saving'
-                      ? 'Saving…'
-                      : 'Save (⌘S)'
-                }
-                onClick={save}
-              >
-                <SaveIndicator
-                  aria-hidden="true"
-                  className={
-                    saveState === 'saving'
-                      ? 'animate-spin'
-                      : saveState === 'error'
-                        ? 'text-destructive'
-                        : undefined
-                  }
-                />
-              </Button>
-              <Separator
-                orientation="vertical"
-                className="mx-0.5 data-[orientation=vertical]:h-5"
-              />
-            </>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Export (⌘⇧E)">
@@ -1236,6 +1299,7 @@ export function MindMapEditor ({
         {!readOnly && (
           <CreateToolbar
             onAddRoot={onAddRoot}
+            onAddSticky={onAddSticky}
             onReactionDragStart={onReactionDragStart}
           />
         )}
