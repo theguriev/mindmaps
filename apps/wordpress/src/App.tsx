@@ -82,10 +82,10 @@ function Failure ({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   )
 }
 
-/** Sits below the editor's toolbar, out of the way of its own controls. */
+/** The one free corner: the editor's own islands hold the other three. */
 function ReadOnlyBadge () {
   return (
-    <div className="absolute top-16 left-3 z-40 rounded-md border bg-background/95 px-2 py-1 text-xs text-muted-foreground shadow-sm">
+    <div className="absolute bottom-4 left-4 z-20 rounded-2xl border bg-background px-3 py-1.5 text-xs text-muted-foreground shadow-lg select-none">
       Read-only
     </div>
   )

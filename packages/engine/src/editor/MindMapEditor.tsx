@@ -66,7 +66,7 @@ import { editorOverlayAnchor } from '../components/NodeScene'
 import { EDITOR_MIN_H, EDITOR_MIN_W, nodeBounds } from '../components/nodeGeometry'
 import { TextEditorOverlay } from '../components/TextEditorOverlay'
 import { EdgeEditor } from '../components/EdgeEditor'
-import { Toolbar } from '../components/Toolbar'
+import { Island } from '../components/Island'
 import { CanvasControls } from '../components/CanvasControls'
 import { CreateToolbar } from '../components/CreateToolbar'
 import { CommandMenu, type MenuCommand } from '../components/CommandMenu'
@@ -1081,88 +1081,95 @@ export function MindMapEditor ({
     >
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
       <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
-      <Toolbar
-        left={
-          <>
-            {onBack && (
-              <>
-                <Button variant="ghost" size="icon" title="Back" onClick={onBack}>
-                  <ArrowLeftIcon />
-                </Button>
-                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
-              </>
-            )}
-            {rootNode && (
-              <h1 className="truncate text-lg font-semibold">{rootNode.name}</h1>
-            )}
-          </>
-        }
-        right={
-          <>
-            {!readOnly && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title="Add sticky note"
-                  onClick={onAddSticky}
-                >
-                  <StickyNoteIcon />
-                </Button>
-                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
-              </>
-            )}
-            {!readOnly && (
-            <Button
-              variant="ghost"
-              size="icon"
-              title={
-                saveState === 'error'
-                  ? 'Save failed — click to retry  ⌘S'
-                  : saveState === 'saving'
-                    ? 'Saving…'
-                    : 'Save  ⌘S'
-              }
-              onClick={save}
-            >
-              <SaveIndicator
-                className={
-                  saveState === 'saving'
-                    ? 'animate-spin'
-                    : saveState === 'error'
-                      ? 'text-destructive'
-                      : undefined
-                }
+      {/* Nothing above the canvas: the map owns the whole surface and the
+          controls float over it, so an embed spends none of its host's page on
+          a title bar. The rows themselves let pointer events through — only the
+          islands inside them take clicks. */}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
+        {(onBack !== undefined || rootNode !== undefined) && (
+        <Island className="min-w-0 gap-1">
+          {onBack && (
+            <>
+              <Button variant="ghost" size="icon" aria-label="Back" onClick={onBack}>
+                <ArrowLeftIcon aria-hidden="true" />
+              </Button>
+              <Separator
+                orientation="vertical"
+                className="mx-0.5 data-[orientation=vertical]:h-5"
               />
-            </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" title="Export  ⌘⇧E">
-                  <DownloadIcon />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={saveJpeg}>JPEG</DropdownMenuItem>
-                <DropdownMenuItem onClick={savePng}>
-                  PNG <span className="ml-auto text-muted-foreground">⌘⇧E</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              title="Command menu  ⌘K"
-              onClick={() => setCommandOpen(true)}
-            >
-              <CommandIcon />
-            </Button>
-          </>
-        }
-      />
+            </>
+          )}
+          {rootNode && (
+            <h1 className="truncate px-2 text-sm font-semibold">{rootNode.name}</h1>
+          )}
+        </Island>
+        )}
+        <Island className="gap-1">
+          {!readOnly && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Add sticky note"
+                onClick={onAddSticky}
+              >
+                <StickyNoteIcon aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={
+                  saveState === 'error'
+                    ? 'Save failed — click to retry (⌘S)'
+                    : saveState === 'saving'
+                      ? 'Saving…'
+                      : 'Save (⌘S)'
+                }
+                onClick={save}
+              >
+                <SaveIndicator
+                  aria-hidden="true"
+                  className={
+                    saveState === 'saving'
+                      ? 'animate-spin'
+                      : saveState === 'error'
+                        ? 'text-destructive'
+                        : undefined
+                  }
+                />
+              </Button>
+              <Separator
+                orientation="vertical"
+                className="mx-0.5 data-[orientation=vertical]:h-5"
+              />
+            </>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Export (⌘⇧E)">
+                <DownloadIcon aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={saveJpeg}>JPEG</DropdownMenuItem>
+              <DropdownMenuItem onClick={savePng}>
+                PNG <span className="ml-auto text-muted-foreground">⌘⇧E</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Command menu (⌘K)"
+            onClick={() => setCommandOpen(true)}
+          >
+            <CommandIcon aria-hidden="true" />
+          </Button>
+        </Island>
+      </div>
       <div
-        className="absolute inset-x-0 bottom-0 top-14 overflow-hidden bg-background"
+        className="absolute inset-0 overflow-hidden bg-background"
         ref={contentRef}
       >
         <Canvas

@@ -7,7 +7,6 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Separator } from './ui/separator'
 import type { MapDoc } from '../mindmap/types'
 import type { TemplateDoc } from '../templates'
 
@@ -78,12 +77,11 @@ export function MapList ({
   return (
     <div ref={ref} className="h-full overflow-auto">
       <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
-        <div className="flex items-center">
+        <div className="mb-4 flex items-center">
           {/* The heading names the product, so the mark is decorative. */}
           <Logo className="mr-3" alt="" />
           <h1 className="text-3xl font-bold">Mind maps</h1>
         </div>
-        <Separator className="my-4" />
         <div className="flex gap-2">
           <div className="relative flex-1">
             <SearchIcon

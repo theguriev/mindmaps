@@ -97,7 +97,7 @@ puts that embed in read-only mode. The decision is made once per mount, in
 
 - the list renders rows without the star/remove controls, and without the
   "New" affordance — not the same rows with dead buttons;
-- the editor is handed an `onSave` that never touches the store. The toolbar's
+- the editor is handed an `onSave` that never touches the store. The island's
   save button and ⌘S both land in that same handler, so there is no shortcut
   around a hidden control;
 - a badge says the embed is read-only, and says so more loudly once a save has
