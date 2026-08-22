@@ -6,6 +6,7 @@ import {
   parseBoot,
   resolveCanEdit,
   resolveMapId,
+  resolveMapParam,
   type BootConfig
 } from './boot'
 import './index.css'
@@ -54,11 +55,14 @@ function mount (container: HTMLElement, boot: BootConfig): void {
   createRoot(container).render(
     <StrictMode>
       {/* Each embed reads its own map and its own permission for that map; the
-          payload is only the page-wide default behind them. */}
+          payload is only the page-wide default behind them. `data-map-param`
+          is present only on a mount that owns its page's URL (the admin
+          screen), and names the query parameter the open map lives in. */}
       <App
         boot={boot}
         mapId={resolveMapId(container.dataset.mapId, boot)}
         canEdit={resolveCanEdit(container.dataset.canEdit, boot)}
+        mapParam={resolveMapParam(container.dataset.mapParam)}
       />
     </StrictMode>
   )

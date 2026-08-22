@@ -1,7 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent
+} from 'react'
+import { MoveDiagonalIcon } from 'lucide-react'
 import type { MindNode } from '../mindmap/types'
 import { useMarkdownToolbar } from '../hooks/useMarkdownToolbar'
 import { TextToolBar } from './TextToolBar'
+import { EDITOR_MIN_H, EDITOR_MIN_W, editorToolbarSide } from './nodeGeometry'
 
 /**
  * DOM textarea overlay for editing a node's markdown source. Positioned over the
@@ -27,7 +36,7 @@ export function TextEditorOverlay ({
   onInput: (value: string) => void
   onStartResize: (
     node: MindNode,
-    e: MouseEvent,
+    e: ReactPointerEvent,
     dir: { signX: number; signY: number }
   ) => void
 }) {
@@ -49,7 +58,20 @@ export function TextEditorOverlay ({
       ? signX === 1 ? 'cursor-se-resize' : 'cursor-sw-resize'
       : signX === 1 ? 'cursor-ne-resize' : 'cursor-nw-resize'
   const gripMirror = `${signX === -1 ? '-scale-x-100 ' : ''}${signY === -1 ? '-scale-y-100 ' : ''}`
+  // Both hang off the textarea's box from outside, on opposite edges: the grip
+  // is on the free corner (`signY`), so the bar takes the other side.
+  const toolbarSide = editorToolbarSide(anchorY)
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  // The element in state as well as in the ref: the toolbar scopes its shortcut
+  // listener to it, and that listener is attached in an effect — which needs a
+  // render once the textarea exists. Stable callback, so React does not detach
+  // and re-attach (and re-set the state) on every render.
+  const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(null)
+  const attachTextarea = useCallback((el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el
+    setTextareaEl(el)
+  }, [])
   const toolbar = useMarkdownToolbar(textareaRef, onInput)
 
   // Restore selection after a formatting action re-renders the value (no-op
@@ -81,6 +103,8 @@ export function TextEditorOverlay ({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <TextToolBar
+        side={toolbarSide}
+        target={textareaEl}
         actions={{
           bold: toolbar.bold,
           italic: toolbar.italic,
@@ -93,22 +117,38 @@ export function TextEditorOverlay ({
         }}
       />
       <textarea
-        ref={textareaRef}
+        ref={attachTextarea}
         rows={1}
+        // The floors are the resize clamp's, not CSS's own: a box that stops
+        // shrinking at a different width than `node.width` does is how a node
+        // used to jump wider the moment its editor closed.
+        style={{
+          width: node.width,
+          height: node.height,
+          minWidth: EDITOR_MIN_W,
+          minHeight: EDITOR_MIN_H
+        }}
         value={node.name}
-        style={{ width: node.width, height: node.height }}
-        className="box-border block min-h-[74px] min-w-[300px] resize-none rounded-md border-2 border-foreground bg-background pt-11 pr-2.5 pb-2.5 pl-2.5 text-sm leading-normal outline-none"
+        className="box-border block resize-none rounded-md border-2 border-foreground bg-background p-2.5 text-sm leading-normal outline-none"
         onChange={(e) => onInput(e.target.value)}
         onClick={(e) => e.stopPropagation()}
       />
       <div
-        className={`absolute ${gripPosX} ${gripPosY} ${gripCursor} ${gripMirror}size-3.5 after:absolute after:right-1.5 after:bottom-0.5 after:h-2.5 after:w-0.5 after:rotate-45 after:bg-foreground after:content-[''] before:absolute before:right-1 before:bottom-0.5 before:h-1.5 before:w-0.5 before:rotate-45 before:bg-foreground before:content-['']`}
-        onMouseDown={(e) => {
+        // Above the toolbar's stacking level: the free corner and the bar sit
+        // on opposite edges now, but the grip must win wherever they meet.
+        className={`absolute ${gripPosX} ${gripPosY} ${gripCursor} ${gripMirror}z-20 touch-none text-foreground`}
+        // Pointer, not mouse: the wrapper above swallows `pointerdown`, so a
+        // touch or pen press never reached a mouse-only grip.
+        onPointerDown={(e) => {
           e.stopPropagation()
           e.preventDefault()
           onStartResize(node, e, { signX, signY })
         }}
-      />
+      >
+        {/* The diagonal runs from the anchored corner to the free one, which
+            is what `gripMirror` flips it for. */}
+        <MoveDiagonalIcon className="size-3.5" aria-hidden="true" />
+      </div>
     </div>
   )
 }

@@ -125,6 +125,19 @@ never inherits from `window.mindMapsBoot`:
 | --- | --- |
 | `data-map-id` | **Always emitted.** The map's id, or the **empty string** meaning "no map — show the list" |
 | `data-can-edit` | `"1"` or `"0"`, resolved per mount from the viewer's `edit_post` on that map (or `edit_posts` for a list mount) |
+| `data-map-param` | Present **only on a mount that owns its page's URL** — the admin screen, where it is `map`. Names the query parameter the open map lives in |
+
+A mount naming a `data-map-param` is a *routed* mount: opening a map rewrites
+that parameter, so the address identifies the map the way `post.php?post=1`
+identifies a post, and a reload, a shared link or the browser's Back button all
+land where the address says. Such a mount always offers its way back to the
+list. A shortcode or block emits no `data-map-param` — the address belongs to
+the post it sits in — and keeps the open map in component state.
+
+The admin screen also renders its canvas edge to edge, so its mount carries no
+inline `min-height` (an inline height outranks any stylesheet and would keep
+the container from shrinking with the viewport). Shortcode and block mounts
+keep theirs.
 
 The empty string is load-bearing: an *absent* `data-map-id` used to fall back to
 `boot.mapId`, so `[mind_map]` followed by `[mind_map id="42"]` rendered map 42

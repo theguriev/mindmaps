@@ -207,6 +207,32 @@ describe('the embed stylesheet', () => {
     expect(offenders.map((rule) => rule.selector)).toEqual([])
   })
 
+  it('keeps every rule out of a cascade layer', () => {
+    // An unlayered declaration beats a layered one whatever its specificity,
+    // and the host's CSS is unlayered: WordPress' own `forms.css` says
+    // `textarea { padding: 8px }`. Layer anything here and it loses that
+    // fight — which is how the node editor's `pt-11` stopped reserving room
+    // for its toolbar and the text ended up underneath it, invisible.
+    //
+    // `properties` is Tailwind's own fallback block for `@property`-less
+    // browsers; it declares custom properties and paints nothing, so it is the
+    // one layer allowed here.
+    const layers = new Set(
+      Array.from(compiled.matchAll(/@layer\s+([\w-]+)/g), (m) => m[1])
+    )
+    layers.delete('properties')
+    expect(Array.from(layers)).toEqual([])
+  })
+
+  it('marks the utilities important, so a host rule cannot outrank them', () => {
+    // Unlayered only puts the embed in the same competition as the host; a
+    // theme rule like `.entry-content textarea` still outranks a single
+    // utility class on specificity. `important` is what settles it, and it is
+    // what the flag exists for — a widget dropped into a page it does not own.
+    const utility = rules.find((rule) => rule.selector === '.p-4')
+    expect(utility?.declarations).toMatch(/!important/)
+  })
+
   it('never pulls in Preflight, whichever import brings it', () => {
     const source = compiled
     // Preflight's own giveaways, in the shape Tailwind emits them.
@@ -274,6 +300,44 @@ function blockProperties (css: string, header: string): Map<string, string> {
   }
   return properties
 }
+
+describe('the logo', () => {
+  /** The base64 payload `packages/engine/src/assets/logo.ts` inlines. */
+  function inlinedLogo (): Buffer {
+    const source = readFileSync(
+      path.resolve(HERE, '../../../packages/engine/src/assets/logo.ts'),
+      'utf8'
+    )
+    const chunks = Array.from(source.matchAll(/'([A-Za-z0-9+/=]{16,})'/g), (m) => m[1])
+    expect(chunks.length).toBeGreaterThan(0)
+    return Buffer.from(chunks.join(''), 'base64')
+  }
+
+  it('is one image in three places', () => {
+    // `logo.png` is the source of truth. The apps get the inlined copy in
+    // `logo.ts`; the WordPress admin menu takes a URL and so needs its own file
+    // in the plugin directory. Regenerating one and not the others shows up as
+    // a stale logo somewhere nobody looks often.
+    const source = readFileSync(
+      path.resolve(HERE, '../../../packages/engine/src/assets/logo.png')
+    )
+    const plugin = readFileSync(
+      path.resolve(
+        HERE,
+        '../../../services/wordpress/plugin/mind-maps/img/logo.png'
+      )
+    )
+    expect(plugin.equals(source)).toBe(true)
+    expect(inlinedLogo().equals(source)).toBe(true)
+  })
+
+  it('is inlined, so the embed still ships exactly one script', () => {
+    // A second asset would be requested from a path that does not exist on a
+    // WordPress site — the plugin enqueues the bundle, not a directory.
+    const bundle = readFileSync(path.join(HERE, '..', 'dist', 'index.js'), 'utf8')
+    expect(bundle).toContain('data:image/png;base64')
+  })
+})
 
 describe('the design tokens copied from the engine', () => {
   it('are identical to the engine\'s own', async () => {

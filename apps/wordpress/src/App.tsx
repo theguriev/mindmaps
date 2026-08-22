@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  FileQuestionMarkIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon
+} from 'lucide-react'
+import {
   Button,
-  Input,
-  MapItem,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Separator,
-  Templates,
+  MapList,
   listTemplates,
   prepareTemplate,
   type MapDoc,
@@ -18,7 +17,13 @@ import {
 // up as a single file (WordPress enqueues one script).
 import { MindMapEditor } from '@mindmaps/engine/editor'
 import { createWpStore, type MapStore } from '@mindmaps/storage'
-import { editingAllowed, intlLocale, type BootConfig } from './boot'
+import {
+  editingAllowed,
+  intlLocale,
+  mapIdFromUrl,
+  mapUrl,
+  type BootConfig
+} from './boot'
 import { describeStoreError } from './errors'
 
 /** Where an async load is, so loading and failure are always drawn. */
@@ -47,7 +52,7 @@ function Spinner ({ label }: { label: string }) {
       className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-muted-foreground"
       role="status"
     >
-      <div className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+      <LoaderCircleIcon className="size-6 animate-spin" aria-hidden="true" />
       <span className="text-sm">{label}</span>
     </div>
   )
@@ -60,7 +65,7 @@ function Failure ({ error, onRetry }: { error: unknown; onRetry: () => void }) {
       className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center"
       role="alert"
     >
-      <div className="text-3xl opacity-60">⚠️</div>
+      <TriangleAlertIcon className="size-8 text-destructive" aria-hidden="true" />
       <div className="max-w-md font-medium">{notice.title}</div>
       {notice.detail && (
         <div className="max-w-md text-xs text-muted-foreground">{notice.detail}</div>
@@ -122,7 +127,10 @@ function MapView ({
   if (state.data === null) {
     return (
       <div className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center">
-        <div className="text-3xl opacity-60">🗺️</div>
+        <FileQuestionMarkIcon
+          className="size-8 text-muted-foreground"
+          aria-hidden="true"
+        />
         <div className="font-medium">This mind map is not available.</div>
         {onBack && (
           <Button variant="outline" onClick={onBack}>
@@ -155,40 +163,7 @@ function MapView ({
   )
 }
 
-/** A map row for visitors who may not touch anything. */
-function ReadOnlyMapItem ({
-  map,
-  locale,
-  onGo
-}: {
-  map: MapDoc
-  locale?: string
-  onGo: (map: MapDoc) => void
-}) {
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col items-start">
-          <Button
-            variant="link"
-            className="h-auto p-0 text-xl"
-            onClick={() => onGo(map)}
-          >
-            {map.title}
-          </Button>
-          {map.modified && (
-            <span className="text-xs text-muted-foreground">
-              Updated {new Date(map.modified).toLocaleString(locale)}
-            </span>
-          )}
-        </div>
-      </div>
-      <Separator className="my-4" />
-    </div>
-  )
-}
-
-function MapList ({
+function MapsScreen ({
   store,
   canEdit,
   locale,
@@ -202,7 +177,6 @@ function MapList ({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [answer, setAnswer] = useState<Answer<MapDoc[]> | null>(null)
   const [attempt, setAttempt] = useState(0)
-  const [filterText, setFilterText] = useState('')
   // A failed mutation must not vanish: the list's own controls hand back a
   // callback rather than a promise, so a rejection here has nowhere else to go.
   const [actionError, setActionError] = useState<unknown>(null)
@@ -235,10 +209,6 @@ function MapList ({
   }
 
   const maps = state.data
-  const needle = filterText.toLocaleLowerCase()
-  const filteredMaps = maps.filter((el) =>
-    (el.title ?? '').toLocaleLowerCase().includes(needle)
-  )
   const templates = listTemplates(maps)
 
   const go = (map: MapDoc) => onOpen(String(map.id))
@@ -287,82 +257,44 @@ function MapList ({
     })
 
   return (
-    <div ref={rootRef} className="h-full overflow-auto">
-      <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
-        <div className="flex items-center">
-          <span className="mr-3 text-3xl">🧠</span>
-          <h1 className="text-3xl font-bold">Mind maps</h1>
-        </div>
-        <Separator className="my-4" />
-        <div className="flex gap-2">
-          <Input
-            className="flex-1"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Find a map..."
-          />
-          {/* Creating a map is a write: without `edit_posts` the REST call
-              would 403, so the affordance is absent rather than broken. */}
-          {canEdit && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button>New</Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-3" align="end">
-                <Templates templates={templates} onChoose={chooseTemplate} />
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-        {actionError !== null && (
+    <MapList
+      ref={rootRef}
+      maps={maps}
+      templates={templates}
+      // A visitor without `edit_posts` gets a list with no write affordances at
+      // all: every mutation behind them would 403 at the REST boundary.
+      readOnly={!canEdit}
+      // The embed sits on somebody's site, where an absolute date in the site's
+      // own locale reads better than "8 minutes ago".
+      formatModified={(modified) => new Date(modified).toLocaleString(locale)}
+      notice={
+        actionError !== null && (
           <div
             className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
             role="alert"
           >
             {describeStoreError(actionError).title}
           </div>
-        )}
-        <Separator className="my-4" />
-        {maps.length > 0 ? (
-          <div className="flex flex-col">
-            {filteredMaps.map((map) =>
-              // `MapItem` is the editing row — it owns the star and remove
-              // buttons. A read-only visitor gets a row without them instead
-              // of the same row with dead controls.
-              canEdit ? (
-                <MapItem
-                  key={String(map.id)}
-                  map={map}
-                  onGo={go}
-                  onRemove={remove}
-                  onStar={(m, done) => setTemplateFlag(m, '1', done)}
-                  onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
-                />
-              ) : (
-                <ReadOnlyMapItem
-                  key={String(map.id)}
-                  map={map}
-                  locale={locale}
-                  onGo={go}
-                />
-              )
-            )}
-          </div>
-        ) : (
-          <div className="py-10 text-center text-muted-foreground">
-            <div className="text-4xl opacity-50">🗂️</div>
-            <div>{canEdit ? 'No maps yet — create one!' : 'No maps to show.'}</div>
-          </div>
-        )}
-      </div>
-    </div>
+        )
+      }
+      onGo={go}
+      onRemove={remove}
+      onStar={(m, done) => setTemplateFlag(m, '1', done)}
+      onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
+      onChooseTemplate={chooseTemplate}
+    />
   )
 }
 
 /**
- * The embed's two states. There is no router on a WordPress page — the URL
- * belongs to the post — so which map is open is component state, seeded from
- * the mount point's `data-map-id` (or the boot payload's `mapId`).
+ * The embed's two states, and which of them the URL is allowed to name.
+ *
+ * A mount inside somebody else's post owns no URL — that address belongs to the
+ * post — so the open map is component state, seeded from `data-map-id`. The
+ * admin screen is the opposite: it *is* the page, so it passes `mapParam` and
+ * the open map lives in that query parameter, exactly as `post.php?post=1`
+ * names a post. Reloading, sharing the link and the browser's back button then
+ * all land where the address says.
  *
  * `canEdit` arrives per mount too (`main.tsx` resolves it from the mount
  * point's `data-can-edit`): one page can carry a map the visitor owns next to
@@ -371,11 +303,13 @@ function MapList ({
 export function App ({
   boot,
   mapId,
-  canEdit
+  canEdit,
+  mapParam
 }: {
   boot: BootConfig
   mapId?: string
   canEdit?: boolean
+  mapParam?: string
 }) {
   const store = useMemo(
     () => createWpStore({ root: boot.root, nonce: boot.nonce }),
@@ -384,9 +318,32 @@ export function App ({
   const mayEdit = canEdit ?? editingAllowed(boot)
   const locale = intlLocale(boot)
 
-  // A pinned map is the whole embed: there is no list behind it to go back to.
-  const pinned = mapId !== undefined
   const [openId, setOpenId] = useState<string | undefined>(mapId)
+
+  // Routed mounts always have a list to go back to; a pinned embed does not.
+  const routed = mapParam !== undefined
+  const pinned = !routed && mapId !== undefined
+
+  // The address bar and the open map are one thing seen twice: `show` writes
+  // the map into the URL, and Back/Forward write it back into state.
+  const show = (next: string | undefined) => {
+    setOpenId(next)
+    if (!routed) return
+    window.history.pushState(
+      { mindMaps: next ?? null },
+      '',
+      mapUrl(window.location.href, mapParam, next)
+    )
+  }
+
+  useEffect(() => {
+    if (!routed) return
+    const onPopState = () => {
+      setOpenId(mapIdFromUrl(window.location.href, mapParam))
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [routed, mapParam])
 
   if (openId !== undefined) {
     return (
@@ -394,12 +351,14 @@ export function App ({
         store={store}
         id={openId}
         canEdit={mayEdit}
-        onBack={pinned ? undefined : () => setOpenId(undefined)}
+        onBack={pinned ? undefined : () => show(undefined)}
       />
     )
   }
 
   return (
-    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
+    // `show`, not `setOpenId`: opening a map from the list has to move the URL
+    // too when this mount owns it.
+    <MapsScreen store={store} canEdit={mayEdit} locale={locale} onOpen={show} />
   )
 }

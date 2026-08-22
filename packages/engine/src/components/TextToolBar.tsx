@@ -1,6 +1,8 @@
 /**
- * Markdown formatting toolbar shown above the editing textarea. Buttons call
- * the provided actions; keyboard shortcuts mirror the original (⌘B, ⌘I, …).
+ * Markdown formatting toolbar for the editing textarea. Buttons call the
+ * provided actions; keyboard shortcuts mirror the original (⌘B, ⌘I, …).
+ * It sits outside the textarea's box (above it, or below when the overlay
+ * hangs upwards) so it can never paint over the text being edited.
  */
 import {
   BoldIcon,
@@ -32,38 +34,72 @@ export interface ToolbarActions {
   blockquote: () => void
 }
 
-export function TextToolBar ({ actions }: { actions: ToolbarActions }) {
-  useEvent<KeyboardEvent>('keydown', (event) => {
-    const dict: Array<[boolean, () => void]> = [
-      [event.metaKey && event.code === 'KeyB', actions.bold],
-      [event.metaKey && event.code === 'KeyI', actions.italic],
-      [event.metaKey && event.shiftKey && event.code === 'KeyX', actions.strikethrough],
-      [event.metaKey && event.shiftKey && event.code === 'KeyC', actions.code],
-      [event.metaKey && event.shiftKey && event.code === 'KeyU', actions.link],
-      [event.metaKey && event.shiftKey && event.code === 'Digit7', actions.orderedList],
-      [event.metaKey && event.shiftKey && event.code === 'Digit8', actions.bulletedList],
-      [event.metaKey && event.shiftKey && event.code === 'Digit9', actions.blockquote]
-    ]
-    const match = dict.find(([cond]) => cond)
-    if (match) {
-      event.preventDefault()
-      match[1]()
-    }
-  })
+// ⌘ on a Mac, Ctrl everywhere else — deliberately not "either one": ⌃B/⌃F are
+// macOS's own caret moves inside a textarea, so answering them here would
+// break typing on the platform the ⌘ shortcuts already serve.
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform)
+const MOD = IS_MAC ? '⌘' : 'Ctrl'
+const SHIFT = IS_MAC ? '⇧' : 'Shift'
+
+export function TextToolBar ({
+  actions,
+  side = 'top',
+  target = null
+}: {
+  actions: ToolbarActions
+  /** Which side of the textarea the bar hangs off. */
+  side?: 'top' | 'bottom'
+  /** The textarea being edited. The shortcuts are scoped to it, like every
+   *  other listener in the editor: bound to `window` they `preventDefault()`
+   *  ⌘B/⌘I/… for the whole page, eating the host page's own shortcuts. */
+  target?: HTMLTextAreaElement | null
+}) {
+  useEvent<KeyboardEvent>(
+    'keydown',
+    (event) => {
+      const mod = IS_MAC ? event.metaKey : event.ctrlKey
+      const dict: Array<[boolean, () => void]> = [
+        [mod && event.code === 'KeyB', actions.bold],
+        [mod && event.code === 'KeyI', actions.italic],
+        [mod && event.shiftKey && event.code === 'KeyX', actions.strikethrough],
+        [mod && event.shiftKey && event.code === 'KeyC', actions.code],
+        [mod && event.shiftKey && event.code === 'KeyU', actions.link],
+        [mod && event.shiftKey && event.code === 'Digit7', actions.orderedList],
+        [mod && event.shiftKey && event.code === 'Digit8', actions.bulletedList],
+        [mod && event.shiftKey && event.code === 'Digit9', actions.blockquote]
+      ]
+      const match = dict.find(([cond]) => cond)
+      if (match) {
+        event.preventDefault()
+        match[1]()
+      }
+    },
+    target
+  )
 
   const items: Array<{ icon: LucideIcon; label: string; keys: string; run: () => void }> = [
-    { icon: BoldIcon, label: 'Bold', keys: '⌘ B', run: actions.bold },
-    { icon: ItalicIcon, label: 'Italic', keys: '⌘ I', run: actions.italic },
-    { icon: StrikethroughIcon, label: 'Strikethrough', keys: '⌘ ⇧ X', run: actions.strikethrough },
-    { icon: CodeIcon, label: 'Code', keys: '⌘ ⇧ C', run: actions.code },
-    { icon: LinkIcon, label: 'Link', keys: '⌘ ⇧ U', run: actions.link },
-    { icon: ListOrderedIcon, label: 'Ordered list', keys: '⌘ ⇧ 7', run: actions.orderedList },
-    { icon: ListIcon, label: 'Bulleted list', keys: '⌘ ⇧ 8', run: actions.bulletedList },
-    { icon: QuoteIcon, label: 'Blockquote', keys: '⌘ ⇧ 9', run: actions.blockquote }
+    { icon: BoldIcon, label: 'Bold', keys: `${MOD} B`, run: actions.bold },
+    { icon: ItalicIcon, label: 'Italic', keys: `${MOD} I`, run: actions.italic },
+    { icon: StrikethroughIcon, label: 'Strikethrough', keys: `${MOD} ${SHIFT} X`, run: actions.strikethrough },
+    { icon: CodeIcon, label: 'Code', keys: `${MOD} ${SHIFT} C`, run: actions.code },
+    { icon: LinkIcon, label: 'Link', keys: `${MOD} ${SHIFT} U`, run: actions.link },
+    { icon: ListOrderedIcon, label: 'Ordered list', keys: `${MOD} ${SHIFT} 7`, run: actions.orderedList },
+    { icon: ListIcon, label: 'Bulleted list', keys: `${MOD} ${SHIFT} 8`, run: actions.bulletedList },
+    { icon: QuoteIcon, label: 'Blockquote', keys: `${MOD} ${SHIFT} 9`, run: actions.blockquote }
   ]
 
   return (
-    <div className="absolute top-1 left-1 z-10 flex rounded-md bg-background p-0.5">
+    <div
+      // Anchored to the textarea's edge from the outside: `bottom-full` /
+      // `top-full` leave the textarea's own box, and the corner opposite the
+      // bar is where the resize grip lives, so the two never share a pixel.
+      className={`absolute left-0 z-10 flex rounded-md bg-background p-0.5 ${
+        side === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+      }`}
+      role="toolbar"
+      aria-label="Markdown formatting"
+    >
       {items.map(({ icon: Icon, label, keys, run }) => (
         <Tooltip key={label}>
           <TooltipTrigger asChild>
@@ -72,9 +108,13 @@ export function TextToolBar ({ actions }: { actions: ToolbarActions }) {
               variant="ghost"
               size="icon"
               className="size-8 opacity-60 hover:opacity-100"
+              // The tooltip only names the button while it is open (it sets
+              // `aria-describedby`), so without this a screen reader reads
+              // eight buttons called "button".
+              aria-label={`${label} (${keys})`}
               onClick={run}
             >
-              <Icon />
+              <Icon aria-hidden="true" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>

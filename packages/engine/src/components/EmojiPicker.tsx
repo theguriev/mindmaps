@@ -1,3 +1,5 @@
+import { Button } from './ui/button'
+
 /** A small, self-contained emoji picker (curated set, grouped by category). */
 export const EMOJI_GROUPS: Array<{ name: string; emojis: string[] }> = [
   {
@@ -53,15 +55,19 @@ export function EmojiPicker ({ onPick }: EmojiPickerProps) {
           </div>
           <div className="grid grid-cols-8 gap-0.5">
             {group.emojis.map((emoji, i) => (
-              <button
+              // No tooltip here: it would only repeat the glyph already on the
+              // button, at the cost of a Radix root in each of a hundred cells.
+              <Button
                 key={`${emoji}-${i}`}
                 type="button"
-                title={emoji}
+                variant="ghost"
+                size="icon"
+                aria-label={emoji}
                 onClick={() => onPick(emoji)}
-                className="flex size-8 items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-muted"
+                className="size-8 text-xl leading-none hover:bg-muted"
               >
                 {emoji}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

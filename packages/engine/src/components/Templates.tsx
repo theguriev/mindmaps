@@ -1,6 +1,25 @@
-import { useState } from 'react'
-import { Input } from './ui/input'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from './ui/command'
 import type { TemplateDoc } from '../templates'
+
+/** Item values are `index::title` — the index prefix keeps values unique when
+ *  two templates share a title, and matching starts after the first `::` so a
+ *  query never hits it. The description rides along as a cmdk keyword. */
+function matchTemplate (value: string, search: string, keywords?: string[]): number {
+  const needle = search.toLowerCase().trim()
+  const title = value.slice(value.indexOf('::') + 2)
+  return [title, ...(keywords ?? [])].some((text) =>
+    text.toLowerCase().includes(needle)
+  )
+    ? 1
+    : 0
+}
 
 export function Templates ({
   templates,
@@ -9,12 +28,6 @@ export function Templates ({
   templates: TemplateDoc[]
   onChoose: (template: TemplateDoc) => void
 }) {
-  const [search, setSearch] = useState('')
-  const filtered = templates.filter(
-    (t) =>
-      t.title.indexOf(search) > -1 || (t.description ?? '').indexOf(search) > -1
-  )
-
   return (
     <div>
       <div className="text-base font-semibold">Select a Template</div>
@@ -22,25 +35,32 @@ export function Templates ({
         To speed up the process, you can select from one of our pre-made
         templates.
       </div>
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search for a template"
-      />
-      <ul className="mt-2 max-h-80 space-y-1 overflow-auto">
-        {filtered.map((template, index) => (
-          <li
-            key={index}
-            onClick={() => onChoose(template)}
-            className="flex cursor-pointer flex-col rounded-md p-2 hover:bg-secondary"
-          >
-            <b className="font-semibold">{template.title.replace('{index}', '')}</b>
-            <small className="text-xs text-muted-foreground">
-              {template.description}
-            </small>
-          </li>
-        ))}
-      </ul>
+      <Command filter={matchTemplate}>
+        <CommandInput placeholder="Search for a template" />
+        <CommandList className="max-h-80">
+          <CommandEmpty>No templates found.</CommandEmpty>
+          <CommandGroup>
+            {templates.map((template, index) => {
+              // `{index}` is substituted when the map is created, not in the list.
+              const title = template.title.replace('{index}', '')
+              return (
+                <CommandItem
+                  key={index}
+                  value={`${index}::${title}`}
+                  keywords={template.description ? [template.description] : undefined}
+                  onSelect={() => onChoose(template)}
+                  className="cursor-pointer flex-col items-start gap-0 p-2"
+                >
+                  <b className="font-semibold">{title}</b>
+                  <small className="text-xs text-muted-foreground">
+                    {template.description}
+                  </small>
+                </CommandItem>
+              )
+            })}
+          </CommandGroup>
+        </CommandList>
+      </Command>
     </div>
   )
 }

@@ -1,0 +1,83 @@
+/*
+ * The Mind Maps admin screen, edge to edge.
+ *
+ * WordPress lays a top-level admin page out for documents: `#wpcontent` insets
+ * the content, `#wpbody-content` reserves 65px for the footer and `.wrap` adds
+ * its own margins — so a canvas app renders as a white box floating in grey.
+ * These rules turn that column into a viewport-height flex column instead: any
+ * admin notices form a strip at the top, and the map takes everything left.
+ *
+ * Scoped to this screen through the body class WordPress already emits for it
+ * (`toplevel_page_mind-maps`), so nothing here touches another admin page. The
+ * `.js` part mirrors core's own block-editor rules: with JavaScript off there
+ * is no app to fill the canvas, and the ordinary layout is the better fallback.
+ *
+ * Deliberately NOT in the app's stylesheet: that one is enqueued on every front
+ * end page carrying a map, where `#wpcontent` and `#wpfooter` do not exist.
+ *
+ * The offsets come from WordPress itself and are checked against the running
+ * version: `#wpcontent`'s `margin-left` already tracks the admin menu at every
+ * width (160px, 36px folded/auto-folded, 0 below 782px, mirrored in RTL), so
+ * this file must not restate any of it — only the height needs computing, and
+ * `--wp-admin--admin-bar--height` (32px, 46px below 782px) is core's own.
+ */
+
+body.js.toplevel_page_mind-maps #wpcontent {
+	/* The 20px gutter that separates a document from the admin menu. */
+	padding-inline-start: 0;
+}
+
+body.js.toplevel_page_mind-maps #wpbody-content {
+	/* Core floats this column and reserves room for the footer below it. */
+	float: none;
+	padding-bottom: 0;
+	display: flex;
+	flex-direction: column;
+	/* `html.wp-toolbar` pads the page down by the admin bar's height, so 100vh
+	   still measures the whole viewport — the bar has to come off explicitly. */
+	height: calc(100vh - var(--wp-admin--admin-bar--height, 32px));
+}
+
+/*
+ * Admin notices.
+ *
+ * WordPress prints them into `#wpbody-content` and then moves them after the
+ * `.wp-header-end` marker the screen emits, so they land above the canvas
+ * either way. They keep their own height and the map absorbs the rest — a
+ * chatty plugin costs canvas, but nothing an administrator is meant to act on
+ * disappears. (Core's block editor hides them outright; it has its own notice
+ * system to relay what matters, and this screen does not.)
+ */
+body.js.toplevel_page_mind-maps #wpbody-content > .notice,
+body.js.toplevel_page_mind-maps #wpbody-content > div.updated,
+body.js.toplevel_page_mind-maps #wpbody-content > div.error {
+	flex: 0 0 auto;
+	margin: 5px 15px 2px;
+}
+
+body.js.toplevel_page_mind-maps .mind-maps-admin-root {
+	flex: 1 1 auto;
+	/* A flex item will not shrink below its content without this, and the app's
+	   own `min-height` floor would otherwise push the canvas past the viewport
+	   on a short window. */
+	min-height: 0;
+	/* The app adds `.mind-maps-app` (which is `position: relative`) when React
+	   mounts; stating it here means the editor's `absolute inset-0` resolves
+	   against this box from the first paint rather than after hydration. */
+	position: relative;
+}
+
+body.js.toplevel_page_mind-maps #wpfooter {
+	/* `position: absolute; bottom: 0` inside `#wpwrap` — it would sit on top of
+	   the canvas rather than below it. Core hides it on its full-screen
+	   editor for the same reason. */
+	display: none;
+}
+
+@media screen and (max-width: 782px) {
+	body.js.toplevel_page_mind-maps #wpwrap {
+		/* Below this width the admin menu slides over the content, and it needs a
+		   scrollable wrapper to move within. Core does exactly this. */
+		overflow-y: auto;
+	}
+}

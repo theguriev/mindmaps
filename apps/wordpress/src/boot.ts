@@ -132,6 +132,48 @@ export function resolveCanEdit (
 }
 
 /**
+ * The query parameter a mount point keeps the open map in, if any.
+ *
+ * A mount that names one owns its page's URL: opening a map rewrites that
+ * parameter, so the address bar identifies the map the way `post.php?post=1`
+ * identifies a post, and a reload or a shared link lands back on it. Embeds in
+ * somebody else's page name none — a shortcode must not rewrite the URL of the
+ * post it sits in — and keep the open map in component state.
+ */
+export function resolveMapParam (
+  attribute: string | null | undefined
+): string | undefined {
+  return optionalString(attribute)
+}
+
+/**
+ * The same URL, showing `mapId` — or the list, when it is undefined.
+ *
+ * Everything else in the address is preserved: in the admin the screen itself
+ * lives in `?page=mind-maps`, so only the map parameter may move. The result is
+ * relative, which is what `history.pushState` wants and what keeps the base
+ * below from leaking into the address bar.
+ */
+export function mapUrl (
+  current: string,
+  param: string,
+  mapId: string | undefined
+): string {
+  // A base is only needed for the relative-URL case; it never reaches the
+  // returned string.
+  const url = new URL(current, 'http://mind-maps.invalid')
+  if (mapId === undefined) url.searchParams.delete(param)
+  else url.searchParams.set(param, mapId)
+  return url.pathname + url.search + url.hash
+}
+
+/** The map a URL points at, for a given parameter. */
+export function mapIdFromUrl (current: string, param: string): string | undefined {
+  const url = new URL(current, 'http://mind-maps.invalid')
+  return optionalId(url.searchParams.get(param))
+}
+
+/**
  * Whether the page-wide payload allows editing, for a mount point that carries
  * no `data-can-edit` of its own.
  */

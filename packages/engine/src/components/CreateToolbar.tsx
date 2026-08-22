@@ -1,10 +1,17 @@
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { PlusIcon, SmilePlusIcon } from 'lucide-react'
+import { Button } from './ui/button'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger
 } from './ui/popover'
+import { Separator } from './ui/separator'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from './ui/tooltip'
 import { EmojiPicker } from './EmojiPicker'
 
 interface CreateToolbarProps {
@@ -24,7 +31,14 @@ function loadRecents (): string[] {
   }
 }
 
-const Divider = () => <div className="mx-1 h-6 w-px bg-border" />
+/** The bar sizes itself from its buttons, so the rule cannot inherit a height
+ *  from the row and needs an explicit one. */
+const Divider = () => (
+  <Separator
+    orientation="vertical"
+    className="mx-1 data-[orientation=vertical]:h-6"
+  />
+)
 
 /** Bottom-centre toolbar: add-root (+) and a set of draggable emoji reactions
  *  (recently used) plus a picker to choose any emoji. */
@@ -52,40 +66,60 @@ export function CreateToolbar ({ onAddRoot, onReactionDragStart }: CreateToolbar
 
   return (
     <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-2xl border bg-background p-1.5 shadow-lg select-none">
-      <button
-        type="button"
-        title="Add root node"
-        aria-label="Add root node"
-        onClick={onAddRoot}
-        className="flex h-10 items-center justify-center rounded-full border px-6 text-foreground/80 transition-colors hover:bg-muted [&_svg]:size-5"
-      >
-        <PlusIcon />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            // The name must not depend on the tooltip being open.
+            aria-label="Add root node"
+            onClick={onAddRoot}
+            className="rounded-full border text-foreground/80 hover:bg-muted hover:text-foreground/80 has-[>svg]:px-6"
+          >
+            <PlusIcon className="size-5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Add root node</TooltipContent>
+      </Tooltip>
       <Divider />
       <div className="flex items-center gap-0.5">
         {recents.map((emoji, i) => (
-          <button
-            key={`${emoji}-${i}`}
-            type="button"
-            title="Drag onto a node to react"
-            aria-label={`React ${emoji}`}
-            onPointerDown={(e) => startDrag(emoji, e)}
-            className="flex size-10 cursor-grab items-center justify-center rounded-xl text-2xl leading-none transition-colors hover:bg-muted active:cursor-grabbing"
-          >
-            <span className="pointer-events-none">{emoji}</span>
-          </button>
+          <Tooltip key={`${emoji}-${i}`}>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`React ${emoji}`}
+                // A reaction is dropped by dragging, so the gesture starts on
+                // pointer-down rather than on click.
+                onPointerDown={(e) => startDrag(emoji, e)}
+                className="size-10 cursor-grab rounded-xl text-2xl leading-none hover:bg-muted active:cursor-grabbing"
+              >
+                <span className="pointer-events-none">{emoji}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Drag onto a node to react</TooltipContent>
+          </Tooltip>
         ))}
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              title="Choose an emoji"
-              aria-label="Choose an emoji"
-              className="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted [&_svg]:size-5"
-            >
-              <SmilePlusIcon />
-            </button>
-          </PopoverTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Choose an emoji"
+                  className="size-10 rounded-xl text-muted-foreground hover:bg-muted hover:text-muted-foreground"
+                >
+                  <SmilePlusIcon className="size-5" />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Choose an emoji</TooltipContent>
+          </Tooltip>
           <PopoverContent align="end" side="top" className="w-auto p-2">
             <EmojiPicker
               onPick={(emoji) => {

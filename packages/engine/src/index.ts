@@ -56,11 +56,18 @@ export { measureMarkdown } from './markdown/measure'
 export type { MarkdownLayout } from './markdown/layout'
 
 // ---- UI pieces for a map-list screen ----
+// `MapList` is the whole screen; the pieces below it are exported for a host
+// that wants to assemble its own.
+export { MapList } from './components/MapList'
+export type { MapListProps } from './components/MapList'
+export { Logo } from './components/Logo'
 export { MapItem } from './components/MapItem'
+export type { MapItemProps } from './components/MapItem'
 export { Templates } from './components/Templates'
 export { Toolbar } from './components/Toolbar'
 export { CommandMenu } from './components/CommandMenu'
 export type { MenuCommand } from './components/CommandMenu'
+export { Badge } from './components/ui/badge'
 export { Button } from './components/ui/button'
 export { Input } from './components/ui/input'
 export { Separator } from './components/ui/separator'
