@@ -30,12 +30,22 @@ describe('createWpStore', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`${ROOT}/maps`)
   })
 
-  it('skips malformed entries in a list instead of failing the screen', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse([wireDoc('1'), { id: '2', content: 'nope' }, null]))
+  it('skips entries that are not maps instead of failing the screen', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([wireDoc('1'), null, { title: 'no id' }]))
     const maps = await createWpStore({ root: ROOT, fetch: fetchMock }).list()
     expect(maps.map((m) => m.id)).toEqual(['1'])
+  })
+
+  it('keeps a row whose content it cannot read, minus its thumbnail', async () => {
+    // A list row is a name and a picture. The name is still good here, and a
+    // map you cannot preview is one you can still open, rename or delete —
+    // dropping the row would take those away to hide a bad drawing.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse([{ id: '2', title: 'Broken', content: 'nope' }]))
+    const maps = await createWpStore({ root: ROOT, fetch: fetchMock }).list()
+
+    expect(maps).toEqual([{ id: '2', title: 'Broken', nodes: 0, preview: null }])
   })
 
   it('PUTs the wire document and returns what the server stored', async () => {
@@ -129,5 +139,15 @@ describe('createWpStore', () => {
       .get('1')
       .catch((e: unknown) => e)
     expect(error).toMatchObject({ code: 'invalid_response' })
+  })
+
+  it('flips the template flag through its own route, sending no content', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: '7', template: true }))
+    await createWpStore({ root: ROOT, fetch: fetchMock }).setTemplate('7', true)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(`${ROOT}/maps/7/template`)
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({ template: true })
   })
 })

@@ -146,6 +146,78 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( self::NS . '/maps', $routes );
 		$this->assertArrayHasKey( self::NS . '/maps/(?P<id>\d+)', $routes );
+		$this->assertArrayHasKey( self::NS . '/maps/(?P<id>\d+)/template', $routes );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * The template flag.
+	 * ------------------------------------------------------------------ */
+
+	public function test_flagging_a_template_touches_nothing_but_the_flag(): void {
+		$created = $this->create_as( $this->author );
+		$id      = (int) $created['id'];
+		$before  = \get_post( $id )->post_modified_gmt;
+
+		$response = $this->request( 'PUT', '/maps/' . $id . '/template', array( 'template' => true ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array( 'id' => (string) $id, 'template' => true ), (array) $response->get_data() );
+
+		// The map itself is untouched: same content, and — because a star says
+		// nothing about the map — the same modified time, so a list ordered by
+		// it does not reshuffle when somebody stars a row.
+		$map = (array) $this->request( 'GET', '/maps/' . $id )->get_data();
+		$this->assertSame( '1', $map['meta']['template'] );
+		$this->assertCount( 2, $map['content'] );
+		$this->assertSame( $before, \get_post( $id )->post_modified_gmt );
+
+		$this->request( 'PUT', '/maps/' . $id . '/template', array( 'template' => false ) );
+		$this->assertSame(
+			'0',
+			( (array) $this->request( 'GET', '/maps/' . $id )->get_data() )['meta']['template']
+		);
+	}
+
+	/**
+	 * @dataProvider provide_non_boolean_flags
+	 *
+	 * @param mixed $flag Candidate flag value.
+	 */
+	public function test_a_flag_that_is_not_a_boolean_is_rejected( mixed $flag ): void {
+		$created = $this->create_as( $this->author );
+
+		$response = $this->request(
+			'PUT',
+			'/maps/' . (int) $created['id'] . '/template',
+			array( 'template' => $flag )
+		);
+
+		$this->assert_error( $response, 'mindmap_invalid_document', 400 );
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function provide_non_boolean_flags(): array {
+		return array(
+			'the string the flag is stored as' => array( '1' ),
+			'a number'                         => array( 1 ),
+			'null'                             => array( null ),
+			'an object'                        => array( array( 'on' => true ) ),
+		);
+	}
+
+	public function test_one_user_cannot_flag_anothers_map(): void {
+		$created = $this->create_as( $this->author );
+		\wp_set_current_user( $this->other_author );
+
+		$response = $this->request(
+			'PUT',
+			'/maps/' . (int) $created['id'] . '/template',
+			array( 'template' => true )
+		);
+
+		$this->assert_error( $response, 'mindmap_forbidden', 403 );
 	}
 
 	public function test_no_route_is_publicly_readable(): void {

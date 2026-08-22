@@ -8,10 +8,13 @@ import {
   Button,
   MapList,
   blankTemplate,
+  builtinTemplate,
   listTemplates,
   prepareTemplate,
+  templateFromDoc,
   type MapDoc,
-  type TemplateDoc
+  type MapSummary,
+  type TemplateChoice
 } from '@mindmaps/engine'
 // Subpath import: the editor is the heavy half of the engine, and importing it
 // from its own entry keeps that boundary visible even though this bundle ends
@@ -178,7 +181,7 @@ function MapsScreen ({
   onOpen: (id: string) => void
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const [answer, setAnswer] = useState<Answer<MapDoc[]> | null>(null)
+  const [answer, setAnswer] = useState<Answer<MapSummary[]> | null>(null)
   const [attempt, setAttempt] = useState(0)
   // A failed mutation must not vanish: the list's own controls hand back a
   // callback rather than a promise, so a rejection here has nowhere else to go.
@@ -214,7 +217,7 @@ function MapsScreen ({
   const maps = state.data
   const templates = listTemplates(maps)
 
-  const go = (map: MapDoc) => onOpen(String(map.id))
+  const go = (map: MapSummary) => onOpen(String(map.id))
 
   /**
    * Runs a mutation, surfacing its failure instead of dropping the rejection.
@@ -236,18 +239,27 @@ function MapsScreen ({
     }
   }
 
-  const remove = (map: MapDoc, done: () => void) =>
+  const remove = (map: MapSummary, done: () => void) =>
     act(async () => {
       await store.remove([String(map.id)])
     }, done)
 
-  const setTemplateFlag = (map: MapDoc, template: string, done: () => void) =>
+  const setTemplateFlag = (map: MapSummary, template: boolean, done: () => void) =>
     act(async () => {
-      await store.save(String(map.id), { ...map, meta: { template } })
+      await store.setTemplate(String(map.id), template)
     }, done)
 
-  const chooseTemplate = (template: TemplateDoc) =>
+  const chooseTemplate = (choice: TemplateChoice) =>
     act(async () => {
+      // A choice names a template rather than carrying one, so the content of
+      // a starred map is fetched here — when somebody picks it — and not for
+      // every row of a list nobody may pick from.
+      const template =
+        choice.key !== undefined
+          ? builtinTemplate(choice.key)
+          : await store.get(String(choice.id)).then((doc) => (doc === null ? null : templateFromDoc(doc)))
+      if (template === null) return
+
       // A new map is centred on the box the embed occupies, which is what the
       // editor will show a moment later.
       const el = rootRef.current
@@ -282,8 +294,8 @@ function MapsScreen ({
       }
       onGo={go}
       onRemove={remove}
-      onStar={(m, done) => setTemplateFlag(m, '1', done)}
-      onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
+      onStar={(m, done) => setTemplateFlag(m, true, done)}
+      onUnstar={(m, done) => setTemplateFlag(m, false, done)}
       onChooseTemplate={chooseTemplate}
     />
   )

@@ -5,15 +5,14 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { cn } from '../lib/utils'
-import { mapPreview } from '../mindmap/preview'
 import { fromNow } from '../utils/relativeTime'
-import type { MapDoc } from '../mindmap/types'
+import type { MapSummary } from '../mindmap/types'
 
 /** A map with no title still needs something to click on. */
 const UNTITLED = 'Untitled map'
 
 export interface MapItemProps {
-  map: MapDoc
+  map: MapSummary
   /** A visitor who may not write: the row is drawn without its actions. */
   readOnly?: boolean
   /**
@@ -22,10 +21,10 @@ export interface MapItemProps {
    * locale) never has to reimplement the missing-timestamp fallback.
    */
   formatModified?: (modified: string) => string
-  onGo: (map: MapDoc) => void
-  onRemove: (map: MapDoc, done: () => void) => void
-  onStar: (map: MapDoc, done: () => void) => void
-  onUnstar: (map: MapDoc, done: () => void) => void
+  onGo: (map: MapSummary) => void
+  onRemove: (map: MapSummary, done: () => void) => void
+  onStar: (map: MapSummary, done: () => void) => void
+  onUnstar: (map: MapSummary, done: () => void) => void
 }
 
 /**
@@ -56,7 +55,7 @@ export function MapItem ({
   const [starLoading, setStarLoading] = useState(false)
   const isTemplate = (map.meta?.template ?? '0')[0] === '1'
   const starLabel = isTemplate ? 'Make it a map' : 'Make it a template'
-  const nodes = map.content.length
+  const nodes = map.nodes
   const updated =
     map.modified !== undefined && formatModified !== undefined
       ? formatModified(map.modified)
@@ -77,7 +76,7 @@ export function MapItem ({
       )}
     >
       <div className="group relative flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent focus-within:bg-accent">
-        <MapThumb preview={mapPreview(map.content)} />
+        <MapThumb preview={map.preview} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
             {/* `block` rather than the button's default `inline-flex`, so the

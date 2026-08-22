@@ -44,10 +44,19 @@ Namespace `mindmaps/v1`, i.e. `\<site\>/wp-json/mindmaps/v1/…`.
 | POST | `/maps` | `MapDoc` without a meaningful `id` | `MapDoc` |
 | GET | `/maps/<id>` | — | `MapDoc` |
 | PUT | `/maps/<id>` | `MapDoc` | `MapDoc` |
+| PUT | `/maps/<id>/template` | `{ "template": true }` | `{ "id": "<id>", "template": true }` |
 | DELETE | `/maps/<id>` | — | `{ "deleted": true, "id": "<id>" }` |
 
-`PUT` is a full replace and there is no `PATCH`: the route registers `PUT`
-alone, so a partial body cannot be mistaken for a whole document.
+`PUT /maps/<id>` is a full replace and there is no `PATCH`: the route
+registers `PUT` alone, so a partial body cannot be mistaken for a whole
+document.
+
+`PUT /maps/<id>/template` exists because of that. Marking a map as a template
+is one bit, and the thing that sets it is a list row — which holds a title and
+a picture, not a document, and so has nothing to replace the map with. It
+writes post meta only: `template` must be a JSON boolean (`"1"` is a 400), the
+map's content is untouched, and `post_modified` does not move, so a list
+ordered by it does not reshuffle when somebody stars a row.
 
 `MapDoc` on the wire:
 
@@ -75,7 +84,8 @@ Cookie authentication plus the standard REST nonce: the plugin prints
 | --- | --- |
 | GET `/maps`, GET `/maps/<id>` | `read` + the map must be readable by the user (own map, or `edit_others_posts`) |
 | POST `/maps` | `edit_posts` |
-| PUT/DELETE `/maps/<id>` | `edit_post` / `delete_post` for that post |
+| PUT `/maps/<id>`, PUT `/maps/<id>/template` | `edit_post` for that post |
+| DELETE `/maps/<id>` | `delete_post` for that post |
 
 A new map is created as `publish` when its creator has `publish_posts` and as
 `draft` otherwise. Contributors have `edit_posts` but not `publish_posts`, and

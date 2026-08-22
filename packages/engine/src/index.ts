@@ -26,14 +26,20 @@ export type {
   LineShape,
   LineStyle,
   MapDoc,
+  MapPreview,
+  MapSummary,
   MindNode,
   NodeId,
   PathEdge,
   RawNode
 } from './mindmap/types'
 export { branch, canReparent, children, collapsedCounts, prepareList, preparePaths } from './mindmap/list'
-export { mapPreview, previewPaths } from './mindmap/preview'
-export type { MapPreview } from './mindmap/preview'
+export {
+  PREVIEW_MAX_POINTS,
+  PREVIEW_SPAN,
+  mapPreview,
+  previewPaths
+} from './mindmap/preview'
 export { useAdjacency } from './mindmap/useAdjacency'
 export {
   CLIPBOARD_MIME,
@@ -47,8 +53,8 @@ export {
 export type { BranchClipboard } from './mindmap/clipboard'
 
 // ---- Templates ----
-export { blankTemplate, listTemplates, prepareTemplate } from './templates'
-export type { Center, TemplateDoc } from './templates'
+export { blankTemplate, builtinTemplate, listTemplates, prepareTemplate, templateFromDoc } from './templates'
+export type { BuiltinTemplate, Center, TemplateChoice, TemplateDoc } from './templates'
 
 // ---- Rendering primitives (for hosts that draw their own scenes) ----
 export { Canvas } from './renderer/Canvas'

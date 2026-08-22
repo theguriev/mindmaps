@@ -5,9 +5,9 @@
  * (including the pre-monorepo Vue app) still load; anything that fails
  * validation is skipped rather than crashing the list.
  */
-import type { MapDoc } from '@mindmaps/engine'
+import type { MapDoc, MapSummary } from '@mindmaps/engine'
 import { guid } from '@mindmaps/engine'
-import { parseMapDoc } from './document'
+import { parseMapDoc, parseMapSummary } from './document'
 import { MapStoreError, type MapStore } from './types'
 
 export const PREFIX = 'map-'
@@ -55,14 +55,24 @@ export function createLocalStore (options: LocalStoreOptions = {}): MapStore {
   return {
     async list () {
       const storage = storageOf()
-      const docs: MapDoc[] = []
+      const summaries: MapSummary[] = []
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i)
         if (key === null || !key.startsWith(PREFIX)) continue
-        const doc = read(key.slice(PREFIX.length))
-        if (doc) docs.push(doc)
+        const id = key.slice(PREFIX.length)
+        const raw = storage.getItem(key)
+        if (raw === null) continue
+        try {
+          // Nothing is transferred here, so the saving is not in bytes: it is
+          // that a hundred whole documents stop living in the screen's state
+          // for as long as it is open.
+          const summary = parseMapSummary(JSON.parse(raw), id)
+          if (summary) summaries.push(summary)
+        } catch {
+          /* an entry that is not JSON is skipped, like an invalid one */
+        }
       }
-      return docs.sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''))
+      return summaries.sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''))
     },
 
     async get (id) {
@@ -79,6 +89,16 @@ export function createLocalStore (options: LocalStoreOptions = {}): MapStore {
 
     async save (id, doc) {
       return write({ ...doc, id, modified: doc.modified ?? new Date().toISOString() })
+    },
+
+    async setTemplate (id, template) {
+      // Read-modify-write of the stored entry rather than of whatever the list
+      // is holding, so the flag lands on the map as it is now.
+      const doc = read(id)
+      if (doc === null) {
+        throw new MapStoreError(`No map ${id}`, 'not_found')
+      }
+      write({ ...doc, meta: { ...doc.meta, template: template ? '1' : '0' } })
     },
 
     async remove (ids) {

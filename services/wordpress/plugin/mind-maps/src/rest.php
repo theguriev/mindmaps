@@ -88,6 +88,21 @@ function register_routes(): void {
 			),
 		)
 	);
+
+	\register_rest_route(
+		REST_NAMESPACE,
+		'/maps/(?P<id>\d+)/template',
+		array(
+			array(
+				'methods'             => 'PUT',
+				'callback'            => __NAMESPACE__ . '\\handle_set_template',
+				// The same capability a full update needs: this writes to the
+				// map, and a narrower route is not a weaker gate.
+				'permission_callback' => __NAMESPACE__ . '\\can_edit_map',
+				'args'                => $id_arg,
+			),
+		)
+	);
 }
 
 /* -------------------------------------------------------------------------
@@ -286,6 +301,44 @@ function handle_update( WP_REST_Request $request ) {
 	}
 
 	return respond_with_map( $id );
+}
+
+/**
+ * PUT /maps/{id}/template. Marks a map as a template, or stops.
+ *
+ * One bit, on its own route, because the caller is a list row: it holds a
+ * title and a picture, not a document, and there is nothing for it to PUT.
+ * Sending the whole map to move a flag is what made starring a map somebody
+ * had edited elsewhere quietly revert them.
+ *
+ * @param WP_REST_Request $request Incoming request.
+ */
+function handle_set_template( WP_REST_Request $request ) {
+	$id = request_id( $request );
+
+	// A JSON body decodes to `stdClass`, so it is read through `member()` like
+	// every other one here.
+	$template = Document\member( json_body( $request ), 'template' );
+
+	// Only the two values the contract names. Anything else — a string, a
+	// missing key, `null` — is a caller that does not know what it is asking
+	// for, and guessing on its behalf writes the wrong flag.
+	if ( ! \is_bool( $template ) ) {
+		return error_invalid_document();
+	}
+
+	if ( null === \get_post( $id ) ) {
+		return error_not_found();
+	}
+
+	Repository\set_template( $id, $template );
+
+	return \rest_ensure_response(
+		array(
+			'id'       => (string) $id,
+			'template' => $template,
+		)
+	);
 }
 
 /**

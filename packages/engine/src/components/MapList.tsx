@@ -6,13 +6,13 @@ import { Templates } from './Templates'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import type { MapDoc } from '../mindmap/types'
-import type { TemplateDoc } from '../templates'
+import type { MapSummary } from '../mindmap/types'
+import type { TemplateChoice } from '../templates'
 
 export interface MapListProps {
-  maps: MapDoc[]
+  maps: MapSummary[]
   /** Offered by the "New" popover. */
-  templates: TemplateDoc[]
+  templates: TemplateChoice[]
   /**
    * A visitor who may not write. Creating a map is a write — without the
    * capability the request would be refused — so the affordance is absent
@@ -28,11 +28,11 @@ export interface MapListProps {
    * about to replace measures this element.
    */
   ref?: Ref<HTMLDivElement>
-  onGo: (map: MapDoc) => void
-  onRemove: (map: MapDoc, done: () => void) => void
-  onStar: (map: MapDoc, done: () => void) => void
-  onUnstar: (map: MapDoc, done: () => void) => void
-  onChooseTemplate: (template: TemplateDoc) => void
+  onGo: (map: MapSummary) => void
+  onRemove: (map: MapSummary, done: () => void) => void
+  onStar: (map: MapSummary, done: () => void) => void
+  onUnstar: (map: MapSummary, done: () => void) => void
+  onChooseTemplate: (template: TemplateChoice) => void
 }
 
 /**

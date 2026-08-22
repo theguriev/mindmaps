@@ -8,7 +8,8 @@
  * (`services/wordpress/plugin/mind-maps/src/document.php`) — keep the two in
  * sync when the schema changes.
  */
-import type { MapDoc, NodeId, RawNode } from '@mindmaps/engine'
+import { PREVIEW_MAX_POINTS, mapPreview } from '@mindmaps/engine'
+import type { MapDoc, MapPreview, MapSummary, NodeId, RawNode } from '@mindmaps/engine'
 
 /** Schema version stamped on every document this build writes. */
 export const DOC_VERSION = 1
@@ -107,6 +108,81 @@ export function parseMapDoc (value: unknown, fallbackId?: string): MapDoc | null
     if (typeof meta.template === 'string') doc.meta = { template: meta.template }
   }
   return doc
+}
+
+/**
+ * Validate an unknown value into a `MapPreview`, or return null.
+ *
+ * The trust boundary for a drawing: a renderer walks `parents` as indices into
+ * `points` with no guards, on the projection's promise that a parent is always
+ * emitted before its child. Nothing off the wire gets to make that promise, so
+ * it is checked here — and a preview that fails costs its map a thumbnail, not
+ * its row.
+ */
+export function parsePreview (value: unknown): MapPreview | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+
+  const { width, height, points, parents } = raw
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null
+  if (!Array.isArray(points) || !Array.isArray(parents)) return null
+  if (parents.length === 0 || parents.length > PREVIEW_MAX_POINTS) return null
+  if (points.length !== parents.length * 2) return null
+  if (!points.every((point) => Number.isFinite(point))) return null
+
+  for (let i = 0; i < parents.length; i++) {
+    const parent: unknown = parents[i]
+    // `< i` is the invariant, and it makes `-1` the only legal value at 0.
+    if (!Number.isInteger(parent) || (parent as number) < -1 || (parent as number) >= i) {
+      return null
+    }
+  }
+
+  return {
+    width: width as number,
+    height: height as number,
+    points: points as number[],
+    parents: parents as number[]
+  }
+}
+
+/**
+ * Validate and normalize an unknown value into a `MapSummary`, or return null.
+ *
+ * A backend that sends a summary is believed; one that still sends whole
+ * documents has its content projected here instead. That branch is what lets
+ * a new client talk to an old server — and what let the thumbnail ship before
+ * the wire changed shape.
+ */
+export function parseMapSummary (value: unknown, fallbackId?: string): MapSummary | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+
+  const id = isNodeId(raw.id) ? String(raw.id) : fallbackId
+  if (id === undefined || id === '') return null
+
+  // Only parsed when the payload gives us no better answer — projecting a
+  // hundred documents is the cost this type exists to stop paying.
+  const derived = raw.preview === undefined || raw.nodes === undefined
+    ? parseContent(raw.content ?? [])
+    : null
+
+  const summary: MapSummary = {
+    id,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    nodes:
+      Number.isInteger(raw.nodes) && (raw.nodes as number) >= 0
+        ? (raw.nodes as number)
+        : (derived?.length ?? 0),
+    preview: parsePreview(raw.preview) ?? (derived === null ? null : mapPreview(derived))
+  }
+  if (typeof raw.modified === 'string') summary.modified = raw.modified
+  if (typeof raw.date === 'string') summary.date = raw.date
+  if (typeof raw.meta === 'object' && raw.meta !== null) {
+    const meta = raw.meta as Record<string, unknown>
+    if (typeof meta.template === 'string') summary.meta = { template: meta.template }
+  }
+  return summary
 }
 
 /** The wire form a store persists: normalized, version-stamped, id-free where

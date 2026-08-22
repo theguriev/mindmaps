@@ -2,17 +2,18 @@
  * WordPress REST store — talks to the `mindmaps/v1` namespace exposed by the
  * plugin in `services/wordpress`.
  *
- *   GET    {root}/maps          → MapDoc[]
+ *   GET    {root}/maps          → MapSummary[]
  *   POST   {root}/maps          → MapDoc
  *   GET    {root}/maps/{id}     → MapDoc
  *   PUT    {root}/maps/{id}     → MapDoc
+ *   PUT    {root}/maps/{id}/template → { id, template }
  *   DELETE {root}/maps/{id}     → { deleted: true, id }
  *
  * Authentication is WordPress's own cookie + nonce scheme: the plugin prints
  * the nonce into the page and it travels in `X-WP-Nonce`.
  */
-import type { MapDoc } from '@mindmaps/engine'
-import { parseMapDoc, toWire } from './document'
+import type { MapDoc, MapSummary } from '@mindmaps/engine'
+import { parseMapDoc, parseMapSummary, toWire } from './document'
 import { MapStoreError, type MapStore } from './types'
 
 export interface WpStoreOptions {
@@ -101,8 +102,8 @@ export function createWpStore (options: WpStoreOptions): MapStore {
       }
       // Skip unreadable entries instead of failing the whole screen.
       return body
-        .map((item) => parseMapDoc(item))
-        .filter((doc): doc is MapDoc => doc !== null)
+        .map((item) => parseMapSummary(item))
+        .filter((summary): summary is MapSummary => summary !== null)
     },
 
     async get (id) {
@@ -124,6 +125,16 @@ export function createWpStore (options: WpStoreOptions): MapStore {
       return expectDoc(
         await request(`/maps/${encodeURIComponent(id)}`, { method: 'PUT', body })
       )
+    },
+
+    async setTemplate (id, template) {
+      // A route of its own rather than a PUT of the whole map: the flag is one
+      // bit, the row holding it has no document to send, and the map's own
+      // modified time has no business moving because somebody starred it.
+      await request(`/maps/${encodeURIComponent(id)}/template`, {
+        method: 'PUT',
+        body: JSON.stringify({ template })
+      })
     },
 
     async remove (ids) {

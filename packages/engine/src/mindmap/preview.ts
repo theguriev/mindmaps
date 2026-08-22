@@ -22,7 +22,9 @@
  * the cap can never leave a parent index dangling, and a renderer is a forward
  * loop with no guards.
  */
-import type { NodeId, RawNode } from './types'
+import type { MapPreview, NodeId, RawNode } from './types'
+
+export type { MapPreview }
 
 /**
  * The square the points are normalized into. A preview is scale-free: it says
@@ -37,17 +39,6 @@ export const PREVIEW_SPAN = 255
  * a map that has no bound of its own.
  */
 export const PREVIEW_MAX_POINTS = 200
-
-/** A map reduced to points and the lines between them. */
-export interface MapPreview {
-  /** Extent of the points; one of the two is always `PREVIEW_SPAN`. */
-  width: number
-  height: number
-  /** Flat `x, y` pairs — `points[2 * i]` and `points[2 * i + 1]`. */
-  points: number[]
-  /** `parents[i]` is the index of `i`'s parent, or `-1`. Always `< i`. */
-  parents: number[]
-}
 
 /** Rounds the way PHP's `floor($v + 0.5)` does, which is where the mirror of
  *  this function lives. Every input here is non-negative, so the two agree on
