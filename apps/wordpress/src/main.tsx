@@ -65,6 +65,7 @@ function mount (container: HTMLElement, boot: BootConfig): void {
         canEdit={resolveCanEdit(container.dataset.canEdit, boot)}
         mapParam={resolveMapParam(container.dataset.mapParam)}
         startNew={resolveStartNew(container.dataset.new)}
+        container={container}
       />
     </StrictMode>
   )

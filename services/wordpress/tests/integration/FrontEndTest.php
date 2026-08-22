@@ -386,7 +386,7 @@ final class FrontEndTest extends WP_UnitTestCase {
 		$this->assertNull( $bar->get_node( 'new-mind-map' ) );
 	}
 
-	public function test_the_screen_opens_its_picker_when_asked(): void {
+	public function test_the_screen_is_told_to_start_a_map_when_asked(): void {
 		\wp_set_current_user( $this->author );
 		$_GET = array(
 			'page' => 'mind-maps',
@@ -400,7 +400,7 @@ final class FrontEndTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'data-new="1"', $rendered );
 
-		// And not otherwise — a shortcode embed must never pop a picker open.
+		// And not otherwise — a shortcode embed must never create anything.
 		$this->assertStringNotContainsString(
 			'data-new',
 			\do_shortcode( '[mind_map]' )

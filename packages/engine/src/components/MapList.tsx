@@ -23,12 +23,6 @@ export interface MapListProps {
   readOnly?: boolean
   /** Sits under the toolbar; the WordPress embed reports failed mutations here. */
   notice?: ReactNode
-  /**
-   * Open the template picker on mount — the WordPress admin bar's
-   * "+ New → Mind Map" lands here, and arriving at a list is not what it asked
-   * for. Nothing is created until a template is chosen.
-   */
-  startNew?: boolean
   /** Passed through to every row — see `MapItemProps.formatModified`. */
   formatModified?: (modified: string) => string
   /**
@@ -57,7 +51,6 @@ export function MapList ({
   templates,
   readOnly = false,
   notice,
-  startNew = false,
   formatModified,
   ref,
   onGo,
@@ -67,7 +60,6 @@ export function MapList ({
   onChooseTemplate
 }: MapListProps) {
   const [filterText, setFilterText] = useState('')
-  const [creating, setCreating] = useState(startNew && !readOnly)
 
   const needle = filterText.toLocaleLowerCase()
   const filteredMaps = maps.filter((el) =>
@@ -107,7 +99,7 @@ export function MapList ({
             />
           </div>
           {!readOnly && (
-            <Popover open={creating} onOpenChange={setCreating}>
+            <Popover>
               <PopoverTrigger asChild>
                 <Button>
                   New

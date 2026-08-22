@@ -126,6 +126,7 @@ never inherits from `window.mindMapsBoot`:
 | `data-map-id` | **Always emitted.** The map's id, or the **empty string** meaning "no map — show the list" |
 | `data-can-edit` | `"1"` or `"0"`, resolved per mount from the viewer's `edit_post` on that map (or `edit_posts` for a list mount) |
 | `data-map-param` | Present **only on a mount that owns its page's URL** — the admin screen, where it is `map`. Names the query parameter the open map lives in |
+| `data-new` | `"1"` when the visitor arrived from the admin bar's "+ New → Mind Map". The mount creates a blank map through the REST API and opens it, then drops the `new` parameter from the address so a reload cannot create a second one |
 
 A mount naming a `data-map-param` is a *routed* mount: opening a map rewrites
 that parameter, so the address identifies the map the way `post.php?post=1`

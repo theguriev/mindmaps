@@ -7,6 +7,7 @@ import {
 import {
   Button,
   MapList,
+  blankTemplate,
   listTemplates,
   prepareTemplate,
   type MapDoc,
@@ -18,10 +19,12 @@ import {
 import { MindMapEditor } from '@mindmaps/engine/editor'
 import { createWpStore, type MapStore } from '@mindmaps/storage'
 import {
+  NEW_QUERY_PARAM,
   editingAllowed,
   intlLocale,
   mapIdFromUrl,
   mapUrl,
+  withoutParam,
   type BootConfig
 } from './boot'
 import { describeStoreError } from './errors'
@@ -167,13 +170,11 @@ function MapsScreen ({
   store,
   canEdit,
   locale,
-  startNew,
   onOpen
 }: {
   store: MapStore
   canEdit: boolean
   locale?: string
-  startNew?: boolean
   onOpen: (id: string) => void
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -266,8 +267,6 @@ function MapsScreen ({
       // A visitor without `edit_posts` gets a list with no write affordances at
       // all: every mutation behind them would 403 at the REST boundary.
       readOnly={!canEdit}
-      // Arriving from the admin bar's "+ New → Mind Map".
-      startNew={startNew}
       // The embed sits on somebody's site, where an absolute date in the site's
       // own locale reads better than "8 minutes ago".
       formatModified={(modified) => new Date(modified).toLocaleString(locale)}
@@ -309,13 +308,16 @@ export function App ({
   mapId,
   canEdit,
   mapParam,
-  startNew
+  startNew,
+  container
 }: {
   boot: BootConfig
   mapId?: string
   canEdit?: boolean
   mapParam?: string
   startNew?: boolean
+  /** The mount box, so a map created on arrival is centred in it. */
+  container?: HTMLElement | null
 }) {
   const store = useMemo(
     () => createWpStore({ root: boot.root, nonce: boot.nonce }),
@@ -351,6 +353,83 @@ export function App ({
     return () => window.removeEventListener('popstate', onPopState)
   }, [routed, mapParam])
 
+  // ---- "+ New → Mind Map" ----
+  // The admin bar asked for a map, so make one and open it. The write is still
+  // a REST call with its nonce — the link that got us here is a plain GET, and
+  // a GET a browser may prefetch must not create anything by itself.
+  const [createAttempt, setCreateAttempt] = useState(0)
+  // Once per attempt: React's development double-mount would otherwise create
+  // two maps, and so would anything else that re-runs this effect.
+  const createdForRef = useRef(-1)
+  const [creating, setCreating] = useState(startNew === true && mayEdit)
+  const [createError, setCreateError] = useState<unknown>(null)
+
+  useEffect(() => {
+    if (startNew !== true || !mayEdit) return
+    if (createdForRef.current === createAttempt) return
+    createdForRef.current = createAttempt
+
+    let live = true
+    // Named and placed the way the picker would have done it: the list decides
+    // the `{index}` in the template's title, and the mount box decides where
+    // the root node sits.
+    const box = container?.getBoundingClientRect()
+    const centre = {
+      centerX: (box?.width ?? 960) / 2,
+      centerY: (box?.height ?? 600) / 2
+    }
+    store
+      .list()
+      .then((maps) =>
+        store.create(prepareTemplate(blankTemplate(), centre, maps.length + 1))
+      )
+      .then(
+        (doc) => {
+          if (!live) return
+          setCreating(false)
+          setOpenId(String(doc.id))
+          // `replace`, not `push`: the address that created this map must not
+          // stay in history, or Back — and a reload — would create another.
+          if (routed) {
+            window.history.replaceState(
+              { mindMaps: String(doc.id) },
+              '',
+              // The marker goes too: it is spent, and a reload that kept it
+              // would create a second map.
+              withoutParam(
+                mapUrl(window.location.href, mapParam, String(doc.id)),
+                NEW_QUERY_PARAM
+              )
+            )
+          }
+        },
+        (error: unknown) => {
+          if (!live) return
+          setCreating(false)
+          setCreateError(error)
+        }
+      )
+    return () => {
+      live = false
+    }
+  }, [startNew, mayEdit, store, routed, mapParam, createAttempt, container])
+
+  if (creating) return <Spinner label="Creating a mind map…" />
+  if (createError !== null) {
+    return (
+      <Failure
+        error={createError}
+        onRetry={() => {
+          setCreateError(null)
+          setCreating(true)
+          // Bumping the attempt is what re-runs the effect; clearing the flag
+          // alone would leave the spinner turning forever.
+          setCreateAttempt((n) => n + 1)
+        }}
+      />
+    )
+  }
+
   if (openId !== undefined) {
     return (
       <MapView
@@ -365,12 +444,6 @@ export function App ({
   return (
     // `show`, not `setOpenId`: opening a map from the list has to move the URL
     // too when this mount owns it.
-    <MapsScreen
-      store={store}
-      canEdit={mayEdit}
-      locale={locale}
-      startNew={startNew}
-      onOpen={show}
-    />
+    <MapsScreen store={store} canEdit={mayEdit} locale={locale} onOpen={show} />
   )
 }

@@ -27,7 +27,7 @@ const MENU_CAPABILITY = 'edit_posts';
 /** Query parameter naming the open map, as `post.php` uses `post`. */
 const MAP_QUERY_ARG = 'map';
 
-/** Query parameter asking the screen to open its template picker. */
+/** Query parameter asking the screen to start a blank map. */
 const NEW_QUERY_ARG = 'new';
 
 /**
@@ -107,7 +107,7 @@ function menu_icon(): string {
 /**
  * The URL of the screen, optionally asking it to start a new map.
  *
- * @param bool $new Open the template picker on arrival.
+ * @param bool $new Create a blank map on arrival and open it.
  */
 function screen_url( bool $new = false ): string {
 	$args = array( 'page' => MENU_SLUG );
@@ -135,8 +135,9 @@ function wants_new_map( array $query ): bool {
  * (the post type is `show_ui: false`). So the node is added by hand, pointing
  * at the screen that does own map creation.
  *
- * The link only opens the picker: creating a map is a REST write, and a plain
- * `GET` a browser may prefetch has no business making one.
+ * The link itself writes nothing — a plain `GET` a browser may prefetch has no
+ * business creating content. It carries `new=1`, and the screen makes the map
+ * through the REST API, with its nonce, once it has loaded.
  *
  * @param \WP_Admin_Bar $bar The admin bar being built.
  */
@@ -220,7 +221,7 @@ function render_page(): void {
 	echo '<h1 class="screen-reader-text">' . \esc_html__( 'Mind Maps', 'mind-maps' ) . '</h1>';
 	echo '<hr class="wp-header-end">';
 
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- opens a picker, changes nothing.
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a screen selector; the map itself is created through the REST API.
 	$new = wants_new_map( \wp_unslash( $_GET ) );
 
 	// mount_markup() escapes everything it emits.

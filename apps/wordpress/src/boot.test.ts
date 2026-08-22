@@ -10,6 +10,7 @@ import {
   resolveMapId,
   resolveMapParam,
   resolveStartNew,
+  withoutParam,
   type BootConfig
 } from './boot'
 
@@ -249,5 +250,27 @@ describe('resolveStartNew', () => {
     expect(resolveStartNew(null)).toBe(false)
     expect(resolveStartNew('0')).toBe(false)
     expect(resolveStartNew('yes')).toBe(false)
+  })
+})
+
+describe('withoutParam', () => {
+  const ADMIN = '/wp-admin/admin.php?page=mind-maps&new=1&map=42'
+
+  it('spends the one-shot marker without disturbing the rest', () => {
+    // The marker asked for a map; once it exists the address must lose it, or
+    // a reload would ask for a second one.
+    expect(withoutParam(ADMIN, 'new')).toBe('/wp-admin/admin.php?page=mind-maps&map=42')
+  })
+
+  it('is a no-op when the parameter is absent, and keeps the fragment', () => {
+    expect(withoutParam('/wp-admin/admin.php?page=mind-maps#top', 'new')).toBe(
+      '/wp-admin/admin.php?page=mind-maps#top'
+    )
+  })
+
+  it('returns a relative URL, whatever it was given', () => {
+    const result = withoutParam('http://site.test' + ADMIN, 'new')
+    expect(result.startsWith('/wp-admin/')).toBe(true)
+    expect(result).not.toContain('site.test')
   })
 })

@@ -45,7 +45,7 @@ export {
 export type { BranchClipboard } from './mindmap/clipboard'
 
 // ---- Templates ----
-export { listTemplates, prepareTemplate } from './templates'
+export { blankTemplate, listTemplates, prepareTemplate } from './templates'
 export type { Center, TemplateDoc } from './templates'
 
 // ---- Rendering primitives (for hosts that draw their own scenes) ----

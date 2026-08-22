@@ -55,6 +55,17 @@ export function prepareTemplate (
   return { ...rest, title: name, content }
 }
 
+/**
+ * The empty starting point.
+ *
+ * Named rather than reached by index: "the first built-in" is an accident of
+ * the array's order, and the WordPress admin bar's "+ New" creates exactly
+ * this one without asking.
+ */
+export function blankTemplate (): TemplateDoc {
+  return blank
+}
+
 export function listTemplates (customMaps: MapDoc[] = []): TemplateDoc[] {
   const custom = customMaps
     .filter((el) => (el.meta?.template ?? '0')[0] === '1')

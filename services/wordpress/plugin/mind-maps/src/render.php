@@ -69,7 +69,8 @@ function normalize_args( mixed $raw_id, mixed $raw_height ): array {
  *   shortcode must never rewrite the URL of the post it sits in, so it emits
  *   no such attribute.
  * - `data-new` is `"1"` when the visitor arrived asking to start a map (the
- *   admin bar's "+ New → Mind Map"), so the screen opens its template picker.
+ *   admin bar's "+ New → Mind Map"), so the screen creates a blank one and
+ *   opens it.
  *
  * @param array<string, mixed> $args `id` and `height`, plus optional `class`
  *                                   and `map_param`.
