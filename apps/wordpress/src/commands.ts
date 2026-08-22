@@ -16,12 +16,23 @@ import type { MenuCommand } from '@mindmaps/engine'
 
 /** What we use of `@wordpress/data`'s `core/commands` store. */
 interface CommandStore {
-  register: (command: { name: string, label: string, callback: (args: { close?: () => void }) => void }) => void
+  register: (command: {
+    name: string
+    label: string
+    context?: string
+    callback: (args: { close?: () => void }) => void
+  }) => void
   unregister: (name: string) => void
+  /** The palette's current context, which decides what it offers unprompted. */
+  context: () => string | undefined
 }
 
 /** Namespaced so nothing we add can collide with a core command, or a plugin's. */
 export const COMMAND_PREFIX = 'mind-maps/'
+
+/** What the admin's palette calls the context outside the editors. Used when
+ *  the store cannot be asked, so the commands still land somewhere real. */
+export const DEFAULT_CONTEXT = 'root'
 
 /**
  * The label a command gets in WordPress's palette.
@@ -60,6 +71,7 @@ export function commandStore (scope: unknown = globalThis): CommandStore | null 
   const data = wp?.data as
     | {
       dispatch?: (store: string) => Record<string, unknown> | undefined
+      select?: (store: string) => Record<string, unknown> | undefined
     }
     | undefined
   const actions = data?.dispatch?.('core/commands')
@@ -67,9 +79,15 @@ export function commandStore (scope: unknown = globalThis): CommandStore | null 
   const unregister = actions?.unregisterCommand
   if (typeof register !== 'function' || typeof unregister !== 'function') return null
 
+  const getContext = data?.select?.('core/commands')?.getContext
+
   return {
     register: register as CommandStore['register'],
-    unregister: unregister as CommandStore['unregister']
+    unregister: unregister as CommandStore['unregister'],
+    context: () =>
+      typeof getContext === 'function'
+        ? ((getContext as () => unknown)() as string | undefined)
+        : undefined
   }
 }
 
@@ -91,9 +109,17 @@ export function registerCommands (
   names: string[],
   latest: () => MenuCommand[]
 ): () => void {
+  // Registered against the palette's current context, which is what puts them
+  // in the "Suggestions" it offers before anything is typed. WordPress reads
+  // that group from the commands whose context matches — the site-wide ones,
+  // like "Go to: Posts", stay behind the search where they belong. So opening
+  // ⌘K over a map lists what you can do to the map, and nothing else.
+  const context = store.context() ?? DEFAULT_CONTEXT
+
   for (const name of names) {
     store.register({
       name,
+      context,
       label: commandLabel(
         latest().find((command) => commandName(command) === name) ?? {
           group: '',

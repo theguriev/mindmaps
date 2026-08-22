@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { MenuCommand } from '@mindmaps/engine'
-import { COMMAND_PREFIX, commandLabel, commandName, commandStore, registerCommands } from './commands'
+import {
+  COMMAND_PREFIX,
+  DEFAULT_CONTEXT,
+  commandLabel,
+  commandName,
+  commandStore,
+  registerCommands
+} from './commands'
 
 const command = (over: Partial<MenuCommand> = {}): MenuCommand => ({
   group: 'Edit',
@@ -39,9 +46,14 @@ describe('commandStore', () => {
     const registerCommand = vi.fn()
     const unregisterCommand = vi.fn()
     const scope = {
-      wp: { data: { dispatch: () => ({ registerCommand, unregisterCommand }) } }
+      wp: {
+        data: {
+          dispatch: () => ({ registerCommand, unregisterCommand }),
+          select: () => ({ getContext: () => 'root' })
+        }
+      }
     }
-    expect(commandStore(scope)).not.toBeNull()
+    expect(commandStore(scope)?.context()).toBe('root')
   })
 
   it('finds none on the front end, where the editor keeps its own', () => {
@@ -54,13 +66,21 @@ describe('commandStore', () => {
 })
 
 describe('registerCommands', () => {
-  function fakeStore () {
-    const registered = new Map<string, { label: string, callback: (a: { close?: () => void }) => void }>()
+  function fakeStore (context: string | undefined = 'root') {
+    const registered = new Map<
+      string,
+      { label: string, context?: string, callback: (a: { close?: () => void }) => void }
+    >()
     return {
       registered,
-      register: (c: { name: string, label: string, callback: (a: { close?: () => void }) => void }) =>
-        registered.set(c.name, { label: c.label, callback: c.callback }),
-      unregister: (name: string) => registered.delete(name)
+      register: (c: {
+        name: string
+        label: string
+        context?: string
+        callback: (a: { close?: () => void }) => void
+      }) => registered.set(c.name, { label: c.label, context: c.context, callback: c.callback }),
+      unregister: (name: string) => registered.delete(name),
+      context: () => context
     }
   }
 
@@ -113,5 +133,25 @@ describe('registerCommands', () => {
     expect(() =>
       store.registered.get(`${COMMAND_PREFIX}edit-undo`)?.callback({ close: () => {} })
     ).not.toThrow()
+  })
+
+  it("registers in the palette's context, which is what lists them unprompted", () => {
+    // WordPress builds its "Suggestions" — the group shown before anything is
+    // typed — from the commands whose context matches the current one.
+    const store = fakeStore('root')
+    const commands = [command()]
+
+    registerCommands(store, commands.map(commandName), () => commands)
+
+    expect(store.registered.get(`${COMMAND_PREFIX}edit-undo`)?.context).toBe('root')
+  })
+
+  it('falls back to a real context when the store cannot be asked', () => {
+    const store = fakeStore(undefined)
+    const commands = [command()]
+
+    registerCommands(store, commands.map(commandName), () => commands)
+
+    expect(store.registered.get(`${COMMAND_PREFIX}edit-undo`)?.context).toBe(DEFAULT_CONTEXT)
   })
 })

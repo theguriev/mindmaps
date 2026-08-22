@@ -119,7 +119,21 @@ over, which suppresses its own palette and leaves the shortcut alone, and
 map's actions sit beside "Go to: Posts" as `Mind map: Undo (⌘Z)` and the rest.
 They are registered while a map is open and taken back when it closes.
 
-Two details are not incidental:
+They are registered against the palette's **context**, which is what lists them
+without anything being typed. WordPress builds the "Suggestions" it shows on an
+empty query out of the commands whose `context` matches the current one, and
+leaves everything else — the forty-odd site-wide "Go to: …" entries — behind
+the search. So ⌘K over a map opens on what you can do to the map:
+
+```
+SUGGESTIONS
+  Mind map: Add root node
+  Mind map: Add sticky note
+  Mind map: Duplicate branch (⌘D)
+  …
+```
+
+Two more details are not incidental:
 
 - The palette calls through a ref rather than the closure registration saw. The
   editor rebuilds its commands on every render, and `undo` from three renders
