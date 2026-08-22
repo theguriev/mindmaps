@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2Icon, NetworkIcon, StarIcon, Trash2Icon } from 'lucide-react'
+import { LoaderCircleIcon, NetworkIcon, StarIcon, Trash2Icon } from 'lucide-react'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { fromNow } from '../utils/relativeTime'
@@ -102,7 +102,7 @@ export function MapItem ({
               }}
             >
               {starLoading ? (
-                <Loader2Icon className="animate-spin" />
+                <LoaderCircleIcon className="animate-spin" />
               ) : (
                 <StarIcon className={isTemplate ? 'fill-current' : ''} />
               )}
@@ -119,7 +119,7 @@ export function MapItem ({
                 onRemove(map, () => setLoading(false))
               }}
             >
-              {loading ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              {loading ? <LoaderCircleIcon className="animate-spin" /> : <Trash2Icon />}
             </Button>
           </div>
         )}

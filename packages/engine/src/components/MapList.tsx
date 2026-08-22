@@ -1,5 +1,6 @@
 import { useState, type ReactNode, type Ref } from 'react'
-import { ChevronDownIcon, SearchIcon } from 'lucide-react'
+import { ChevronDownIcon, FolderOpenIcon, SearchIcon } from 'lucide-react'
+import { Logo } from './Logo'
 import { MapItem } from './MapItem'
 import { Templates } from './Templates'
 import { Badge } from './ui/badge'
@@ -78,9 +79,8 @@ export function MapList ({
     <div ref={ref} className="h-full overflow-auto">
       <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
         <div className="flex items-center">
-          <span className="mr-3 text-3xl" aria-hidden="true">
-            🧠
-          </span>
+          {/* The heading names the product, so the mark is decorative. */}
+          <Logo className="mr-3" alt="" />
           <h1 className="text-3xl font-bold">Mind maps</h1>
         </div>
         <Separator className="my-4" />
@@ -133,10 +133,8 @@ export function MapList ({
             ))}
           </ul>
         ) : (
-          <div className="py-10 text-center text-muted-foreground">
-            <div className="text-4xl opacity-50" aria-hidden="true">
-              🗂️
-            </div>
+          <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+            <FolderOpenIcon className="size-10 opacity-50" aria-hidden="true" />
             <div>{emptyMessage}</div>
           </div>
         )}

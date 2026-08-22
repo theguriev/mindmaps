@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  FileQuestionMarkIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon
+} from 'lucide-react'
+import {
   Button,
   MapList,
   listTemplates,
@@ -47,7 +52,7 @@ function Spinner ({ label }: { label: string }) {
       className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-muted-foreground"
       role="status"
     >
-      <div className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+      <LoaderCircleIcon className="size-6 animate-spin" aria-hidden="true" />
       <span className="text-sm">{label}</span>
     </div>
   )
@@ -60,7 +65,7 @@ function Failure ({ error, onRetry }: { error: unknown; onRetry: () => void }) {
       className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center"
       role="alert"
     >
-      <div className="text-3xl opacity-60">⚠️</div>
+      <TriangleAlertIcon className="size-8 text-destructive" aria-hidden="true" />
       <div className="max-w-md font-medium">{notice.title}</div>
       {notice.detail && (
         <div className="max-w-md text-xs text-muted-foreground">{notice.detail}</div>
@@ -122,7 +127,10 @@ function MapView ({
   if (state.data === null) {
     return (
       <div className="flex h-full min-h-40 flex-col items-center justify-center gap-3 p-8 text-center">
-        <div className="text-3xl opacity-60">🗺️</div>
+        <FileQuestionMarkIcon
+          className="size-8 text-muted-foreground"
+          aria-hidden="true"
+        />
         <div className="font-medium">This mind map is not available.</div>
         {onBack && (
           <Button variant="outline" onClick={onBack}>

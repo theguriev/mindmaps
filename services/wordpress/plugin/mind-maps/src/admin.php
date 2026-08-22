@@ -67,9 +67,38 @@ function register_menu(): void {
 		MENU_CAPABILITY,
 		MENU_SLUG,
 		__NAMESPACE__ . '\\render_page',
-		'dashicons-share-alt',
+		menu_icon(),
 		25
 	);
+}
+
+/**
+ * The menu mark: the product's own logo rather than a dashicon.
+ *
+ * Passed as an SVG data URI, which is the only form WordPress sizes for the
+ * menu — it renders that as a 20px background. An image *URL* is emitted as a
+ * bare `<img>` with no width, so the 256px logo would fill the screen; and a
+ * dashicon class would mean giving the mark up. The SVG is a thin wrapper
+ * around a 40px raster (2× for retina, ~3KB) so the gradient survives, which
+ * recolouring would have destroyed.
+ *
+ * Falls back to a dashicon when the file or the constants are missing, so a
+ * hand-assembled install still gets a menu entry it can see.
+ */
+function menu_icon(): string {
+	if ( ! \defined( 'MIND_MAPS_DIR' ) ) {
+		return 'dashicons-share-alt';
+	}
+
+	$svg = \MIND_MAPS_DIR . 'img/menu-icon.svg';
+	if ( ! \is_readable( $svg ) ) {
+		return 'dashicons-share-alt';
+	}
+
+	$markup = \file_get_contents( $svg ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local plugin asset, not a remote request.
+	return \is_string( $markup )
+		? 'data:image/svg+xml;base64,' . \base64_encode( $markup )
+		: 'dashicons-share-alt';
 }
 
 /**

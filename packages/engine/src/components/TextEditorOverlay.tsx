@@ -6,6 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent
 } from 'react'
+import { MoveDiagonalIcon } from 'lucide-react'
 import type { MindNode } from '../mindmap/types'
 import { useMarkdownToolbar } from '../hooks/useMarkdownToolbar'
 import { TextToolBar } from './TextToolBar'
@@ -135,7 +136,7 @@ export function TextEditorOverlay ({
       <div
         // Above the toolbar's stacking level: the free corner and the bar sit
         // on opposite edges now, but the grip must win wherever they meet.
-        className={`absolute ${gripPosX} ${gripPosY} ${gripCursor} ${gripMirror}z-20 size-3.5 touch-none after:absolute after:right-1.5 after:bottom-0.5 after:h-2.5 after:w-0.5 after:rotate-45 after:bg-foreground after:content-[''] before:absolute before:right-1 before:bottom-0.5 before:h-1.5 before:w-0.5 before:rotate-45 before:bg-foreground before:content-['']`}
+        className={`absolute ${gripPosX} ${gripPosY} ${gripCursor} ${gripMirror}z-20 touch-none text-foreground`}
         // Pointer, not mouse: the wrapper above swallows `pointerdown`, so a
         // touch or pen press never reached a mouse-only grip.
         onPointerDown={(e) => {
@@ -143,7 +144,11 @@ export function TextEditorOverlay ({
           e.preventDefault()
           onStartResize(node, e, { signX, signY })
         }}
-      />
+      >
+        {/* The diagonal runs from the anchored corner to the free one, which
+            is what `gripMirror` flips it for. */}
+        <MoveDiagonalIcon className="size-3.5" aria-hidden="true" />
+      </div>
     </div>
   )
 }

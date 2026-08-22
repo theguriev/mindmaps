@@ -60,6 +60,7 @@ export type { MarkdownLayout } from './markdown/layout'
 // that wants to assemble its own.
 export { MapList } from './components/MapList'
 export type { MapListProps } from './components/MapList'
+export { Logo } from './components/Logo'
 export { MapItem } from './components/MapItem'
 export type { MapItemProps } from './components/MapItem'
 export { Templates } from './components/Templates'
