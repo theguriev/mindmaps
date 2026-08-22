@@ -3,7 +3,6 @@ import { ChevronDownIcon, FolderOpenIcon, SearchIcon } from 'lucide-react'
 import { Logo } from './Logo'
 import { MapItem } from './MapItem'
 import { Templates } from './Templates'
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -111,10 +110,11 @@ export function MapList ({
           )}
         </div>
         {notice}
-        <div className="mt-6 mb-1 flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Maps</h2>
-          <Badge variant="secondary">{filteredMaps.length}</Badge>
-        </div>
+        {/* No count beside the heading: the rows are right there, and the one
+            case where a number would say something the list does not — a filter
+            that matched nothing — is the case where it is replaced by a message
+            that says it in words. */}
+        <h2 className="mt-6 mb-1 text-sm font-semibold">Maps</h2>
         {filteredMaps.length > 0 ? (
           <ul className="flex list-none flex-col">
             {filteredMaps.map((map) => (

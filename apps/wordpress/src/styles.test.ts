@@ -64,7 +64,7 @@ function resolveStylesheet (id: string, base: string): string {
   return path.join(dir, entry)
 }
 
-async function compileEntry (): Promise<string> {
+async function compileEntry (candidates: string[] = []): Promise<string> {
   const compiled = await compile(await readFile(ENTRY, 'utf8'), {
     base: HERE,
     async loadStylesheet (id, base) {
@@ -74,7 +74,7 @@ async function compileEntry (): Promise<string> {
   })
   // A handful of utilities the engine's own markup uses, so the utility layer
   // is populated the way a real build populates it.
-  return compiled.build(['p-4', 'text-sm', 'bg-background', 'border', 'flex'])
+  return compiled.build(['p-4', 'text-sm', 'bg-background', 'border', 'flex', ...candidates])
 }
 
 /* -------------------------------------------------------------------------
@@ -231,6 +231,34 @@ describe('the embed stylesheet', () => {
     // what the flag exists for — a widget dropped into a page it does not own.
     const utility = rules.find((rule) => rule.selector === '.p-4')
     expect(utility?.declarations).toMatch(/!important/)
+  })
+
+  it('can outrank what WordPress paints on a bare form control', async () => {
+    // `forms.css` reaches `input` by element selector: a border, horizontal
+    // padding and, on focus, a 2px shadow in the admin colour. The field cmdk
+    // renders declares none of those, and a rule that declares nothing cannot
+    // win — which is how the template picker's search box ended up framed in
+    // admin blue, the ring spilling over the rule beneath it.
+    //
+    // `CommandInput` answers by naming the neutral values. This is the half of
+    // that fix which lives here: those utilities have to reach the page as
+    // `!important`, or naming them changes nothing.
+    const neutralizers = ['border-0', 'px-0', 'shadow-none']
+
+    const source = await readFile(
+      path.resolve(HERE, '../../../packages/engine/src/components/ui/command.tsx'),
+      'utf8'
+    )
+    const classes = /data-slot="command-input"[\s\S]*?'([^']*)'/.exec(source)?.[1] ?? ''
+    for (const utility of neutralizers) {
+      expect(classes.split(/\s+/), `command-input dropped ${utility}`).toContain(utility)
+    }
+
+    const built = styleRules(await compileEntry(neutralizers))
+    for (const utility of neutralizers) {
+      const rule = built.find((candidate) => candidate.selector === `.${utility}`)
+      expect(rule?.declarations, utility).toMatch(/!important/)
+    }
   })
 
   it('never pulls in Preflight, whichever import brings it', () => {
