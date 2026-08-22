@@ -15,10 +15,12 @@ import { useDownload } from '@/hooks/useDownload'
 import { useOnResize } from '@/hooks/useOnResize'
 import { useEvent } from '@/hooks/useEvent'
 import { clockIndex } from '@/mindmap/clockIndex'
+import { branch } from '@/mindmap/list'
 import { getMap, saveMap } from '@/api/maps'
 import type { Adjacency, MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import {
   ArrowLeftIcon,
+  ChevronsDownUpIcon,
   CommandIcon,
   DownloadIcon,
   MaximizeIcon,
@@ -114,7 +116,7 @@ function selectionRoots (
   return roots
 }
 
-/** Ids of nodes whose point falls inside a world-space rectangle. */
+/** Ids of visible nodes whose point falls inside a world-space rectangle. */
 function nodesInRect (
   list: Map<NodeId, MindNode>,
   x: number,
@@ -124,6 +126,7 @@ function nodesInRect (
 ): NodeId[] {
   const ids: NodeId[] = []
   for (const n of list.values()) {
+    if (n.hidden) continue
     if (n.x >= x && n.x <= x + w && n.y >= y && n.y <= y + h) ids.push(n.id)
   }
   return ids
@@ -137,7 +140,7 @@ function navigateSelection (
 ): NodeId | null {
   const node = list.get(selectedId)
   if (!node) return null
-  const nodes = Array.from(list.values())
+  const nodes = Array.from(list.values()).filter((n) => !n.hidden)
   if (key === 'ArrowLeft') return node.parent ?? null
   if (key === 'ArrowRight') {
     const child = nodes.find((n) => n.parent === selectedId)
@@ -177,6 +180,7 @@ function Editor ({ id }: { id: string }) {
     update,
     updateBranch,
     moveBranchesBy,
+    toggleCollapsed,
     setReaction,
     setEditing,
     pushSnapshot,
@@ -286,6 +290,21 @@ function Editor ({ id }: { id: string }) {
   }
 
   const onRemove = (nodeId: NodeId) => remove(nodeId)
+
+  // Fold/unfold a branch; folding drops the now-hidden descendants from the
+  // selection so keyboard actions can't target invisible nodes.
+  const onToggleCollapsed = (node: MindNode) => {
+    toggleCollapsed(node.id)
+    if (!node.collapsed) {
+      const hiddenIds = new Set(
+        branch(Array.from(list.values()), node.id).map((n) => n.id)
+      )
+      setSelectedIds((prev) => {
+        const next = new Set(Array.from(prev).filter((i) => !hiddenIds.has(i)))
+        return next.size === prev.size ? prev : next
+      })
+    }
+  }
 
   // Attach a sticky note to the active node (or the root) and edit it right away.
   const onAddSticky = () => {
@@ -460,9 +479,9 @@ function Editor ({ id }: { id: string }) {
     })
   }
 
-  // World-space bounding box of all nodes (for zoom-to-fit).
+  // World-space bounding box of all visible nodes (for zoom-to-fit).
   const contentBounds = () => {
-    const nodes = Array.from(list.values())
+    const nodes = Array.from(list.values()).filter((n) => !n.hidden)
     if (nodes.length === 0) return null
     let minX = Infinity
     let minY = Infinity
@@ -512,10 +531,23 @@ function Editor ({ id }: { id: string }) {
       else undo()
       return
     }
-    // ⌘A — select every node
+    // ⌘A — select every visible node
     if (event.metaKey && event.code === 'KeyA' && !editing) {
       event.preventDefault()
-      setSelectedIds(new Set(list.keys()))
+      setSelectedIds(
+        new Set(
+          Array.from(list.values())
+            .filter((n) => !n.hidden)
+            .map((n) => n.id)
+        )
+      )
+      return
+    }
+    // ⌘. — fold / unfold the active node's branch
+    if (event.metaKey && event.code === 'Period' && !editing) {
+      event.preventDefault()
+      const n = activeId != null ? list.get(activeId) : null
+      if (n) onToggleCollapsed(n)
       return
     }
     // ⌘K — command menu
@@ -629,6 +661,16 @@ function Editor ({ id }: { id: string }) {
     { group: 'View', label: 'Zoom out', shortcut: '−', icon: ZoomOutIcon, run: viewport.zoomOut },
     { group: 'View', label: 'Zoom to 100%', shortcut: '⇧0', run: viewport.zoomTo100 },
     { group: 'View', label: 'Zoom to fit', shortcut: '⇧1', icon: MaximizeIcon, run: () => viewport.zoomToFit(contentBounds()) },
+    {
+      group: 'Edit',
+      label: 'Collapse / expand branch',
+      shortcut: '⌘.',
+      icon: ChevronsDownUpIcon,
+      run: () => {
+        const n = activeId != null ? list.get(activeId) : null
+        if (n) onToggleCollapsed(n)
+      }
+    },
     { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
     { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
     { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save },
@@ -727,6 +769,7 @@ function Editor ({ id }: { id: string }) {
             onEdit={onEdit}
             onAdd={onAdd}
             onRemove={onRemove}
+            onToggleCollapsed={onToggleCollapsed}
           />
         </Canvas>
         {editingNode && (

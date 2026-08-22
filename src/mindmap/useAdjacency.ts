@@ -11,8 +11,9 @@
  */
 import { useState } from 'react'
 import type { Adjacency, MindNode, NodeId, RawNode } from './types'
-import { branch, children, prepareList, preparePaths } from './list'
+import { branch, canReparent, children, prepareList, preparePaths } from './list'
 import { getNewPosition } from './geometry'
+import { guid } from '@/utils/guid'
 
 const HISTORY_CAP = 100
 
@@ -20,17 +21,6 @@ interface History {
   present: Adjacency
   past: Adjacency[]
   future: Adjacency[]
-}
-
-function guid (): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
 }
 
 /** Raw nodes with their id filled in — enough for branch/position math without
@@ -92,6 +82,8 @@ export function useAdjacency (initial: Adjacency) {
       const index = children(Array.from(prev.values()), parentID).length
       const newPosition = getNewPosition(index + offsetIndex)
       const next = new Map(prev)
+      // Adding to a folded branch unfolds it — the new child must be visible.
+      if (parent.collapsed) next.set(parentID, { ...parent, collapsed: undefined })
       next.set(id, {
         name: '',
         x: parent.x + newPosition.x,
@@ -227,6 +219,75 @@ export function useAdjacency (initial: Adjacency) {
     }, true)
   }
 
+  // Fold / unfold a branch. Folding hides every descendant (derived in
+  // `prepareList`); a leaf has nothing to fold. Records one step.
+  const toggleCollapsed = (id: NodeId) => {
+    apply((prev) => {
+      const cur = prev.get(id)
+      if (!cur) return prev
+      if (!cur.collapsed) {
+        const hasKids = Array.from(prev.values()).some((n) => n.parent === id)
+        if (!hasKids) return prev
+      }
+      const next = new Map(prev)
+      next.set(id, { ...cur, collapsed: cur.collapsed ? undefined : true })
+      return next
+    }, true)
+  }
+
+  // Unfold every collapsed ancestor of `id` so the node becomes visible
+  // (e.g. jumping to a search hit inside a folded branch). Records one step
+  // only when something actually unfolds.
+  const reveal = (id: NodeId) => {
+    apply((prev) => {
+      let next: Adjacency | null = null
+      let p = prev.get(id)?.parent
+      const seen = new Set<NodeId>()
+      while (p !== undefined && !seen.has(p)) {
+        seen.add(p)
+        const ancestor = (next ?? prev).get(p)
+        if (!ancestor) break
+        if (ancestor.collapsed) {
+          if (!next) next = new Map(prev)
+          next.set(p, { ...ancestor, collapsed: undefined })
+        }
+        p = ancestor.parent
+      }
+      return next ?? prev
+    }, true)
+  }
+
+  // Move branches (selection roots) under a new parent, keeping their world
+  // positions — only the edge reroutes. Skips self/cycle/sticky-target cases.
+  // Gesture edit: the drag that ends in the drop has already snapshotted.
+  const reparentRoots = (ids: NodeId[], newParent: NodeId) => {
+    apply((prev) => {
+      const target = prev.get(newParent)
+      if (!target || target.sticky) return prev
+      const nodes = withIds(prev)
+      let next: Adjacency | null = null
+      for (const id of ids) {
+        const node = prev.get(id)
+        if (!node || node.parent === newParent) continue
+        if (!canReparent(nodes, id, newParent)) continue
+        if (!next) next = new Map(prev)
+        next.set(id, { ...node, parent: newParent })
+      }
+      return next ?? prev
+    }, false)
+  }
+
+  // Insert pre-built nodes (paste / duplicate) as one undo step. The caller is
+  // responsible for fresh ids and valid parent references.
+  const insertNodes = (nodes: Array<RawNode & { id: NodeId }>) => {
+    if (nodes.length === 0) return
+    apply((prev) => {
+      const next = new Map(prev)
+      for (const n of nodes) next.set(n.id, { ...n })
+      return next
+    }, true)
+  }
+
   // Set (or, when re-applied, clear) an emoji reaction on a node. Records once.
   const setReaction = (id: NodeId, reaction: string) => {
     apply((prev) => {
@@ -293,6 +354,10 @@ export function useAdjacency (initial: Adjacency) {
     updatePosition,
     updateBranch,
     moveBranchesBy,
+    toggleCollapsed,
+    reveal,
+    reparentRoots,
+    insertNodes,
     setReaction,
     setEditing,
     pushSnapshot,

@@ -71,15 +71,84 @@ export function editorOverlayAnchor (node: MindNode): {
   }
 }
 
+/** Collapsed-branch badge: a pill with the hidden-descendant count; click unfolds. */
+function FoldBadge ({
+  x,
+  y,
+  count,
+  hitId,
+  onClick
+}: {
+  x: number
+  y: number
+  count: number
+  hitId: string
+  onClick: () => void
+}) {
+  const layout = measureMarkdown('##### ' + count)
+  const w = Math.max(20, layout.width + 10)
+  return (
+    <group x={x} y={y}>
+      <box
+        x={-w / 2}
+        y={-10}
+        width={w}
+        height={20}
+        radius={10}
+        fill="#ffffff"
+        stroke="#24292e"
+        strokeWidth={1.5}
+        cursor="pointer"
+        hitId={hitId}
+        onPointerDown={() => {}}
+        onClick={onClick}
+      />
+      <markdown x={-layout.width / 2} y={-layout.height / 2} layout={layout} />
+    </group>
+  )
+}
+
+/** Hover affordance for folding an expanded branch: a small "−" disc. */
+function FoldButton ({
+  x,
+  y,
+  hitId,
+  onClick
+}: {
+  x: number
+  y: number
+  hitId: string
+  onClick: () => void
+}) {
+  return (
+    <group x={x} y={y}>
+      <disc
+        radius={8}
+        fill="#ffffff"
+        stroke="#000000"
+        strokeWidth={1.5}
+        cursor="pointer"
+        hitId={hitId}
+        onPointerDown={() => {}}
+        onClick={onClick}
+      />
+      <box x={-4} y={-1} width={8} height={2} fill="#000000" />
+    </group>
+  )
+}
+
 export interface NodeSceneProps {
   node: MindNode
   hovered: boolean
   selected: boolean
   metaPressing: boolean
+  /** Hidden-descendant count — present only when the node is collapsed. */
+  collapsedCount?: number
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
+  onToggleCollapsed: (node: MindNode) => void
 }
 
 export function NodeScene ({
@@ -87,10 +156,12 @@ export function NodeScene ({
   hovered,
   selected,
   metaPressing,
+  collapsedCount,
   onDragStart,
   onEdit,
   onAdd,
-  onRemove
+  onRemove,
+  onToggleCollapsed
 }: NodeSceneProps) {
   const isRoot = node.component === 'root'
   const isPlaceholder = node.name === ''
@@ -156,6 +227,23 @@ export function NodeScene ({
             layout={reactionLayout}
           />
         )}
+        {node.collapsed && collapsedCount !== undefined && (
+          <FoldBadge
+            x={node.width / 2}
+            y={node.height + 2}
+            count={collapsedCount}
+            hitId={String(node.id)}
+            onClick={() => onToggleCollapsed(node)}
+          />
+        )}
+        {hovered && node.isHaveChildren && !node.collapsed && (
+          <FoldButton
+            x={node.width / 2}
+            y={node.height + 2}
+            hitId={String(node.id)}
+            onClick={() => onToggleCollapsed(node)}
+          />
+        )}
       </group>
     )
   }
@@ -205,15 +293,33 @@ export function NodeScene ({
             layout={reactionLayout}
           />
         )}
-        {hovered && (
-          <plus
+        {node.collapsed && collapsedCount !== undefined ? (
+          <FoldBadge
             x={0}
             y={boxH / 2 + 2}
-            radius={10}
-            color="#000000"
+            count={collapsedCount}
             hitId={String(node.id)}
-            onPointerDown={() => {}}
-            onClick={() => onAdd(node)}
+            onClick={() => onToggleCollapsed(node)}
+          />
+        ) : (
+          hovered && (
+            <plus
+              x={0}
+              y={boxH / 2 + 2}
+              radius={10}
+              color="#000000"
+              hitId={String(node.id)}
+              onPointerDown={() => {}}
+              onClick={() => onAdd(node)}
+            />
+          )
+        )}
+        {hovered && node.isHaveChildren && !node.collapsed && (
+          <FoldButton
+            x={26}
+            y={boxH / 2 + 2}
+            hitId={String(node.id)}
+            onClick={() => onToggleCollapsed(node)}
           />
         )}
       </group>
@@ -253,18 +359,36 @@ export function NodeScene ({
           layout={reactionLayout}
         />
       )}
-      {hovered && (
-        <plus
+      {node.collapsed && collapsedCount !== undefined ? (
+        <FoldBadge
           x={0}
           y={0}
-          radius={10}
-          color="#000000"
-          cross={metaPressing}
+          count={collapsedCount}
           hitId={String(node.id)}
-          onPointerDown={() => {}}
-          onClick={(e) =>
-            e.originalEvent.metaKey ? onRemove(node.id) : onAdd(node)
-          }
+          onClick={() => onToggleCollapsed(node)}
+        />
+      ) : (
+        hovered && (
+          <plus
+            x={0}
+            y={0}
+            radius={10}
+            color="#000000"
+            cross={metaPressing}
+            hitId={String(node.id)}
+            onPointerDown={() => {}}
+            onClick={(e) =>
+              e.originalEvent.metaKey ? onRemove(node.id) : onAdd(node)
+            }
+          />
+        )
+      )}
+      {hovered && node.isHaveChildren && !node.collapsed && (
+        <FoldButton
+          x={node.isRightSide ? 18 : -18}
+          y={0}
+          hitId={String(node.id)}
+          onClick={() => onToggleCollapsed(node)}
         />
       )}
     </group>

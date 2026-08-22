@@ -1,5 +1,6 @@
 import type { MindNode, NodeId, PathEdge } from '@/mindmap/types'
 import type { PointerPayload } from '@/renderer/types'
+import { collapsedCounts } from '@/mindmap/list'
 import { EdgeScene } from './EdgeScene'
 import { NodeScene } from './NodeScene'
 
@@ -21,7 +22,8 @@ export function MindMapScene ({
   onDragStart,
   onEdit,
   onAdd,
-  onRemove
+  onRemove,
+  onToggleCollapsed
 }: {
   list: Map<NodeId, MindNode>
   paths: Map<string, PathEdge>
@@ -37,7 +39,10 @@ export function MindMapScene ({
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
   onRemove: (id: NodeId) => void
+  onToggleCollapsed: (node: MindNode) => void
 }) {
+  // Folded branches: their descendants (and the edges into them) are not drawn.
+  const counts = collapsedCounts(list)
   // Junction axis per node: the end tangent of the edge arriving at it. Every
   // edge leaving a node cuts its start notch along this shared axis, so the
   // siblings' cut-outs coincide and the parent's tip nests into one clean V.
@@ -53,27 +58,33 @@ export function MindMapScene ({
   }
   return (
     <group x={offsetX} y={offsetY} scale={scale}>
-      {Array.from(paths.values()).map((edge) => (
-        <EdgeScene
-          key={edge.id}
-          edge={edge}
-          junction={junctionDir.get(edge.fromID)}
-          onColor={onColor}
-        />
-      ))}
-      {Array.from(list.values()).map((node) => (
-        <NodeScene
-          key={String(node.id)}
-          node={node}
-          hovered={hoveredId === String(node.id)}
-          selected={selectedIds.has(node.id)}
-          metaPressing={metaPressing}
-          onDragStart={onDragStart}
-          onEdit={onEdit}
-          onAdd={onAdd}
-          onRemove={onRemove}
-        />
-      ))}
+      {Array.from(paths.values())
+        .filter((edge) => list.get(edge.toID)?.hidden !== true)
+        .map((edge) => (
+          <EdgeScene
+            key={edge.id}
+            edge={edge}
+            junction={junctionDir.get(edge.fromID)}
+            onColor={onColor}
+          />
+        ))}
+      {Array.from(list.values())
+        .filter((node) => !node.hidden)
+        .map((node) => (
+          <NodeScene
+            key={String(node.id)}
+            node={node}
+            hovered={hoveredId === String(node.id)}
+            selected={selectedIds.has(node.id)}
+            metaPressing={metaPressing}
+            collapsedCount={counts.get(node.id)}
+            onDragStart={onDragStart}
+            onEdit={onEdit}
+            onAdd={onAdd}
+            onRemove={onRemove}
+            onToggleCollapsed={onToggleCollapsed}
+          />
+        ))}
       {marquee && (
         <box
           x={marquee.x}
