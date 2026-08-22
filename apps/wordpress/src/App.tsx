@@ -75,15 +75,10 @@ function Failure ({ error, onRetry }: { error: unknown; onRetry: () => void }) {
 }
 
 /** Sits below the editor's toolbar, out of the way of its own controls. */
-function ReadOnlyBadge ({ blocked }: { blocked: boolean }) {
+function ReadOnlyBadge () {
   return (
-    <div
-      className="absolute top-16 left-3 z-40 rounded-md border bg-background/95 px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role={blocked ? 'alert' : undefined}
-    >
-      {blocked
-        ? 'Read-only — your changes were not saved.'
-        : 'Read-only'}
+    <div className="absolute top-16 left-3 z-40 rounded-md border bg-background/95 px-2 py-1 text-xs text-muted-foreground shadow-sm">
+      Read-only
     </div>
   )
 }
@@ -101,9 +96,6 @@ function MapView ({
 }) {
   const [answer, setAnswer] = useState<Answer<MapDoc | null> | null>(null)
   const [attempt, setAttempt] = useState(0)
-  // Set the first time a read-only visitor asks to save, so the badge can say
-  // what happened instead of the save silently doing nothing.
-  const [saveBlocked, setSaveBlocked] = useState(false)
   const key = `${id}#${attempt}`
 
   useEffect(() => {
@@ -141,28 +133,24 @@ function MapView ({
     )
   }
 
-  // The read-only path never reaches the store. Both the toolbar's save button
-  // and ⌘S land in the same handler, so there is no affordance-hiding here that
-  // a keyboard shortcut could walk around — the write simply does not exist.
-  const onSave = canEdit
-    ? async (next: MapDoc) => {
-        await store.save(id, next)
-      }
-    : () => {
-        setSaveBlocked(true)
-      }
-
   return (
     <div className="absolute inset-0">
       <MindMapEditor
         // Key by id so switching maps fully remounts the editor (re-seeds state).
         key={id}
         doc={state.data}
-        onSave={onSave}
+        // `readOnly` makes the editor itself inert — every mutating gesture,
+        // shortcut and affordance, not just the save button — so a visitor
+        // without `edit_post` cannot reach the store at all. The REST
+        // capability checks remain the actual boundary.
+        readOnly={!canEdit}
+        onSave={async (next) => {
+          await store.save(id, next)
+        }}
         onBack={onBack}
         className="absolute inset-0"
       />
-      {!canEdit && <ReadOnlyBadge blocked={saveBlocked} />}
+      {!canEdit && <ReadOnlyBadge />}
     </div>
   )
 }
