@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node scripts/collect-assets.mjs",
     "package": "node scripts/package.mjs",
-    "test": "node scripts/ensure-vendor.mjs && ./vendor/bin/phpunit --testsuite unit",
+    "test:php": "node scripts/ensure-vendor.mjs && ./vendor/bin/phpunit --testsuite unit",
     "test:integration": "node scripts/ensure-vendor.mjs && wp-env run tests-cli --env-cwd=wp-content/mind-maps-service ./vendor/bin/phpunit --testsuite integration",
     "env:start": "wp-env start",
     "env:stop": "wp-env stop",

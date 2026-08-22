@@ -65,9 +65,10 @@ jobs:
           php-version: '8.2'
           coverage: none
       - run: pnpm install --frozen-lockfile
-      # The plugin serves the built bundle; build it so the enqueue path is
+      # The plugin serves the built bundle; build through turbo so the bundle is
+      # also copied into plugin/mind-maps/assets and the enqueue path is
       # exercised the way a real install would be.
-      - run: pnpm --filter @mindmaps/wordpress-app run build
+      - run: pnpm build --filter=@mindmaps/wordpress
       - run: composer install --no-interaction --prefer-dist
         working-directory: services/wordpress
       - run: pnpm --filter @mindmaps/wordpress run env:start

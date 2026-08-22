@@ -15,6 +15,7 @@
     "type-check": "turbo run type-check",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:php": "turbo run test:php",
     "test:integration": "turbo run test:integration",
     "wp:start": "pnpm --filter @mindmaps/wordpress run env:start",
     "wp:stop": "pnpm --filter @mindmaps/wordpress run env:stop",

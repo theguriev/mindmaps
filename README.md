@@ -52,10 +52,10 @@ paint.ts  → Canvas 2D          hitTest.ts → pointer routing
 ```bash
 pnpm install
 pnpm dev            # every app in watch mode (turbo)
-pnpm build          # build everything
+pnpm build          # build everything, including the plugin's bundle
 pnpm type-check
 pnpm lint
-pnpm test           # JS unit suites
+pnpm test           # JS unit suites (no PHP toolchain needed)
 ```
 
 Single workspace: `pnpm --filter @mindmaps/editor dev`.
@@ -63,12 +63,14 @@ Single workspace: `pnpm --filter @mindmaps/editor dev`.
 ### WordPress
 
 ```bash
-pnpm wp:start                    # wp-env: WordPress with the plugin mounted
-pnpm --filter @mindmaps/wordpress run test              # PHP unit suite (no WordPress needed)
-pnpm test:integration                                   # REST suite against real WordPress
-pnpm wp:package                  # dist/mind-maps.zip, installable in any WordPress
+pnpm wp:start        # wp-env: WordPress with the plugin mounted (localhost:8879)
+pnpm test:php        # the plugin's pure PHP suite — no WordPress, no database
+pnpm test:integration  # the REST suite against a real WordPress
+pnpm wp:package      # dist/mind-maps.zip, installable in any WordPress
 pnpm wp:stop
 ```
+
+The PHP suites need PHP and Composer on the PATH (`pnpm test` does not).
 
 See [`services/wordpress/README.md`](services/wordpress/README.md) for the details.
 
