@@ -35,16 +35,37 @@
       </p>
 
       <!--
-        The mount point the shortcode / block render_callback emits. `data-map-id`
-        is what pins one embed to one map; drop the attribute to get the list.
+        The mount points the shortcode / block render_callback emits. Every one
+        carries both attributes: `data-map-id` pins the embed to one map and an
+        empty value means the list (it must not inherit the payload's `mapId`),
+        `data-can-edit` is that map's own permission and outranks the payload's
+        page-wide `canEdit`.
       -->
       <h2>Embedded map</h2>
-      <div data-mind-maps-root data-map-id="1" style="height: 600px"></div>
+      <div
+        data-mind-maps-root
+        data-map-id="1"
+        data-can-edit="1"
+        style="height: 600px"
+      ></div>
+
+      <h2>The same map, read-only</h2>
+      <div
+        data-mind-maps-root
+        data-map-id="1"
+        data-can-edit="0"
+        style="height: 480px"
+      ></div>
 
       <h2>Embedded map list</h2>
-      <div data-mind-maps-root style="height: 480px"></div>
+      <div
+        data-mind-maps-root
+        data-map-id=""
+        data-can-edit="1"
+        style="height: 480px"
+      ></div>
 
-      <p class="harness-note">Still the theme, after both embeds.</p>
+      <p class="harness-note">Still the theme, after all three embeds.</p>
     </div>
 
     <script>
@@ -54,6 +75,9 @@
       window.mindMapsBoot = {
         root: '/wp-json/mindmaps/v1',
         nonce: 'dev-nonce',
+        // A pinned id in the payload: the list embed above must still show the
+        // list, because its own (empty) `data-map-id` is the one that counts.
+        mapId: '1',
         canEdit: true,
         locale: 'en_US'
       }

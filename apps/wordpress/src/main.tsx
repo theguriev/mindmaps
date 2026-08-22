@@ -1,7 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
-import { BootError, parseBoot, resolveMapId, type BootConfig } from './boot'
+import {
+  BootError,
+  parseBoot,
+  resolveCanEdit,
+  resolveMapId,
+  type BootConfig
+} from './boot'
 import './index.css'
 
 declare global {
@@ -47,8 +53,13 @@ function mount (container: HTMLElement, boot: BootConfig): void {
   container.classList.add(CONTAINER_CLASS)
   createRoot(container).render(
     <StrictMode>
-      {/* Each embed reads its own map id; the payload is the page-wide default. */}
-      <App boot={boot} mapId={resolveMapId(container.dataset.mapId, boot)} />
+      {/* Each embed reads its own map and its own permission for that map; the
+          payload is only the page-wide default behind them. */}
+      <App
+        boot={boot}
+        mapId={resolveMapId(container.dataset.mapId, boot)}
+        canEdit={resolveCanEdit(container.dataset.canEdit, boot)}
+      />
     </StrictMode>
   )
 }
