@@ -1,4 +1,4 @@
-/// <reference path="../renderer/jsx.d.ts" />
+import type {} from '../renderer/jsx'
 import {
   useRef,
   useState,

@@ -8,7 +8,7 @@ import type {
   BoxProps,
   DiscProps,
   GroupProps,
-  PictureProps,
+  SpriteProps,
   PlusIconProps,
   SceneNode,
   TriangleProps
@@ -113,8 +113,8 @@ function contains (node: SceneNode, lx: number, ly: number): boolean {
       )
       return d <= (p.strokeWidth ?? 1) / 2 + (p.hitPadding ?? 0)
     }
-    case 'picture': {
-      const p = node.props as PictureProps
+    case 'sprite': {
+      const p = node.props as SpriteProps
       const x = p.x ?? 0
       const y = p.y ?? 0
       return lx >= x && lx <= x + p.width && ly >= y && ly <= y + p.height

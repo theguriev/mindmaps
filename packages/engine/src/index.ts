@@ -1,4 +1,3 @@
-/// <reference path="./renderer/jsx.d.ts" />
 /**
  * Public API of the mind-map engine.
  *
@@ -9,6 +8,10 @@
  * Hosts must also import the stylesheet once:
  *   import '@mindmaps/engine/styles.css'
  */
+
+// Registers the canvas host elements (<group>, <box>, …) with React's JSX
+// namespace for anything that type-checks against this package.
+import type {} from './renderer/jsx'
 
 // ---- The editor ----
 // Also available as `@mindmaps/engine/editor`; importing it from there keeps

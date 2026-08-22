@@ -1,11 +1,1 @@
 $ eslint .
-
-/Users/eugen/work/mind-maps/packages/engine/src/editor/MindMapEditor.tsx
-  1:1  error  Do not use a triple slash reference for ../renderer/jsx.d.ts, use `import` style instead  @typescript-eslint/triple-slash-reference
-
-/Users/eugen/work/mind-maps/packages/engine/src/index.ts
-  1:1  error  Do not use a triple slash reference for ./renderer/jsx.d.ts, use `import` style instead  @typescript-eslint/triple-slash-reference
-
-✖ 2 problems (2 errors, 0 warnings)
-
-[ELIFECYCLE] Command failed with exit code 1.

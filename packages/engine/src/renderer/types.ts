@@ -132,7 +132,7 @@ export interface PlusIconProps extends InteractiveProps {
   visible?: boolean
 }
 
-export interface PictureProps extends InteractiveProps {
+export interface SpriteProps extends InteractiveProps {
   x?: number
   y?: number
   width: number
@@ -148,7 +148,7 @@ export interface ElementPropsMap {
   triangle: TriangleProps
   markdown: MarkdownProps
   plus: PlusIconProps
-  picture: PictureProps
+  sprite: SpriteProps
 }
 
 export type ElementType = keyof ElementPropsMap

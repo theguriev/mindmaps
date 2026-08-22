@@ -8,7 +8,7 @@ import type {
   DiscProps,
   GroupProps,
   MarkdownProps,
-  PictureProps,
+  SpriteProps,
   PlusIconProps,
   SceneNode,
   TriangleProps
@@ -54,8 +54,8 @@ function paintNode (ctx: CanvasRenderingContext2D, node: SceneNode): void {
     case 'plus':
       paintPlus(ctx, node.props as PlusIconProps)
       break
-    case 'picture':
-      paintPicture(ctx, node.props as PictureProps)
+    case 'sprite':
+      paintSprite(ctx, node.props as SpriteProps)
       break
   }
 }
@@ -224,6 +224,6 @@ function paintPlus (ctx: CanvasRenderingContext2D, p: PlusIconProps): void {
   ctx.restore()
 }
 
-function paintPicture (ctx: CanvasRenderingContext2D, p: PictureProps): void {
+function paintSprite (ctx: CanvasRenderingContext2D, p: SpriteProps): void {
   ctx.drawImage(p.image, p.x ?? 0, p.y ?? 0, p.width, p.height)
 }

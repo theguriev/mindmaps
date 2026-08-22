@@ -9,9 +9,12 @@
  * React 19 moved the JSX namespace under the `react` module (the automatic
  * runtime resolves `import('react').JSX`), so we augment it there rather than
  * the old global `JSX` namespace.
+ *
+ * This is a real module (not a `.d.ts`) so consumers outside the package can
+ * pull the augmentation in with `import type {} from '…/renderer/jsx'`, which
+ * erases at build time. Ambient declaration files are not visible across
+ * package boundaries.
  */
-import 'react'
-import type { ReactNode } from 'react'
 import type {
   GroupProps,
   BoxProps,
@@ -20,22 +23,27 @@ import type {
   TriangleProps,
   MarkdownProps,
   PlusIconProps,
-  PictureProps
+  SpriteProps
 } from './types'
 
 type WithKey<P> = P & { key?: string | number | null }
 
 declare module 'react' {
+  // The JSX namespace is how React 19 exposes intrinsic elements; augmenting
+  // it is only possible with a namespace declaration.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
-      group: WithKey<GroupProps> & { children?: ReactNode }
+      // `import('react').ReactNode` inline: a top-level type import used only
+      // inside a module augmentation reads as unused to noUnusedLocals.
+      group: WithKey<GroupProps> & { children?: import('react').ReactNode }
       box: WithKey<BoxProps>
       disc: WithKey<DiscProps>
       bezier: WithKey<BezierProps>
       triangle: WithKey<TriangleProps>
       markdown: WithKey<MarkdownProps>
       plus: WithKey<PlusIconProps>
-      picture: WithKey<PictureProps>
+      sprite: WithKey<SpriteProps>
     }
   }
 }
