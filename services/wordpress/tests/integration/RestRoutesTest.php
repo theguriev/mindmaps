@@ -33,6 +33,8 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 	private int $editor;
 
+	private int $contributor;
+
 	public function set_up(): void {
 		parent::set_up();
 
@@ -45,6 +47,7 @@ final class RestRoutesTest extends WP_UnitTestCase {
 		$this->other_author = self::factory()->user->create( array( 'role' => 'author' ) );
 		$this->subscriber   = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		$this->editor       = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$this->contributor  = self::factory()->user->create( array( 'role' => 'contributor' ) );
 	}
 
 	public function tear_down(): void {
@@ -449,6 +452,156 @@ final class RestRoutesTest extends WP_UnitTestCase {
 		$this->assertSame( (string) $mine, $response->get_data()['id'] );
 		$this->assertSame( 'Renamed', \get_post( $mine )->post_title );
 		$this->assertSame( 'Theirs', \get_post( $theirs )->post_title );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * A creator must be able to save what they created.
+	 * ------------------------------------------------------------------ */
+
+	public function test_a_contributor_can_create_read_update_and_delete_their_own_map(): void {
+		\wp_set_current_user( $this->contributor );
+
+		$created = $this->request( 'POST', '/maps', self::document( 'Contribution' ) );
+		$this->assertSame( 201, $created->get_status(), 'A contributor has edit_posts, so POST is allowed.' );
+		$map_id = (int) $created->get_data()['id'];
+
+		// The map must land in a status its own author can still edit: with
+		// map_meta_cap, edit_post/delete_post on a *published* post resolve to
+		// edit_published_posts/delete_published_posts, which a contributor
+		// does not have — so publishing it would make every later write 403.
+		$this->assertSame( 'draft', \get_post( $map_id )->post_status );
+		$this->assertTrue( \current_user_can( 'edit_post', $map_id ) );
+		$this->assertTrue( \current_user_can( 'delete_post', $map_id ) );
+
+		// Read.
+		$read = $this->request( 'GET', '/maps/' . $map_id );
+		$this->assertSame( 200, $read->get_status() );
+		$this->assertCount( 2, $read->get_data()['content'] );
+
+		// It is listed, draft status and all.
+		$list = $this->request( 'GET', '/maps' );
+		$this->assertSame( 200, $list->get_status() );
+		$this->assertSame( array( (string) $map_id ), \array_column( (array) $list->get_data(), 'id' ) );
+
+		// Save.
+		$updated = $this->request( 'PUT', '/maps/' . $map_id, self::document( 'Contribution v2' ) );
+		$this->assertSame( 200, $updated->get_status(), 'A contributor must be able to save their own map.' );
+		$this->assertSame( 'Contribution v2', $updated->get_data()['title'] );
+		$this->assertSame( 'Contribution v2', \get_post( $map_id )->post_title );
+
+		// Delete.
+		$deleted = $this->request( 'DELETE', '/maps/' . $map_id );
+		$this->assertSame( 200, $deleted->get_status(), 'A contributor must be able to delete their own map.' );
+		$this->assertNull( \get_post( $map_id ) );
+	}
+
+	public function test_a_creator_who_may_publish_still_gets_a_published_map(): void {
+		$map_id = (int) $this->create_as( $this->author )['id'];
+
+		$this->assertSame( 'publish', \get_post( $map_id )->post_status );
+	}
+
+	public function test_one_contributor_still_cannot_touch_anothers_map(): void {
+		$map_id = (int) $this->create_as( $this->contributor )['id'];
+		$other  = self::factory()->user->create( array( 'role' => 'contributor' ) );
+
+		\wp_set_current_user( $other );
+		$this->assert_error( $this->request( 'GET', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
+		$this->assert_error(
+			$this->request( 'PUT', '/maps/' . $map_id, self::document( 'Hijacked' ) ),
+			'mindmap_forbidden',
+			403
+		);
+		$this->assert_error( $this->request( 'DELETE', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
+		$this->assertSame( 'Plan', \get_post( $map_id )->post_title );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * PUT is a full replace, so PATCH must not be routed to it.
+	 * ------------------------------------------------------------------ */
+
+	public function test_patch_is_not_routed_and_cannot_wipe_a_map(): void {
+		$map_id = (int) $this->create_as( $this->author )['id'];
+		\wp_set_current_user( $this->author );
+
+		$handlers = $this->server->get_routes()[ self::NS . '/maps/(?P<id>\d+)' ];
+		foreach ( $handlers as $handler ) {
+			$this->assertEmpty(
+				$handler['methods']['PATCH'] ?? null,
+				'handle_update() is a full replace; PATCH must not reach it.'
+			);
+		}
+
+		// `PATCH {"title": …}` used to answer 200 and leave the document empty.
+		$patched = $this->request( 'PATCH', '/maps/' . $map_id, array( 'title' => 'Wiped' ) );
+		$this->assertSame( 404, $patched->get_status() );
+		$this->assertSame( 'rest_no_route', $patched->get_data()['code'] ?? null );
+
+		$after = $this->request( 'GET', '/maps/' . $map_id )->get_data();
+		$this->assertSame( 'Plan', $after['title'] );
+		$this->assertCount( 2, $after['content'], 'A rejected PATCH must not empty the document.' );
+
+		// PUT is unaffected.
+		$put = $this->request( 'PUT', '/maps/' . $map_id, self::document( 'Plan v2' ) );
+		$this->assertSame( 200, $put->get_status() );
+		$this->assertSame( 'Plan v2', $put->get_data()['title'] );
+		$this->assertCount( 2, $put->get_data()['content'] );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * A JSON object is not a JSON array, whatever PHP decodes it into.
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public static function object_shaped_bodies(): array {
+		$node = '{"name":"n","x":0,"y":0}';
+
+		return array(
+			'content is an object'         => array( '{"title":"Sneaky","content":{}}' ),
+			// Decoded associatively — which is what `get_json_params()` does —
+			// this one becomes a PHP list and sails past `array_is_list()`.
+			'content is a numbered object' => array( '{"title":"Sneaky","content":{"0":["a",' . $node . '],"1":["b",' . $node . ']}}' ),
+			'an entry is an object'        => array( '{"title":"Sneaky","content":[{"0":"a","1":' . $node . '}]}' ),
+		);
+	}
+
+	/**
+	 * @param string $body Raw JSON body.
+	 * @dataProvider object_shaped_bodies
+	 */
+	public function test_object_shaped_content_is_rejected_on_create_and_update( string $body ): void {
+		\wp_set_current_user( $this->author );
+
+		$create = new WP_REST_Request( 'POST', self::NS . '/maps' );
+		$create->set_header( 'content-type', 'application/json' );
+		$create->set_body( $body );
+		$this->assert_error( $this->server->dispatch( $create ), 'mindmap_invalid_document', 400 );
+		$this->assertSame( 0, ( new \WP_Query( array( 'post_type' => PostType\POST_TYPE ) ) )->found_posts );
+
+		$map_id = (int) $this->create_as( $this->author )['id'];
+		$update = new WP_REST_Request( 'PUT', self::NS . '/maps/' . $map_id );
+		$update->set_header( 'content-type', 'application/json' );
+		$update->set_body( $body );
+		$this->assert_error( $this->server->dispatch( $update ), 'mindmap_invalid_document', 400 );
+
+		// And the stored map is untouched.
+		$this->assertCount( 2, $this->request( 'GET', '/maps/' . $map_id )->get_data()['content'] );
+	}
+
+	public function test_object_shaped_stored_meta_degrades_to_an_empty_document(): void {
+		$map_id = (int) $this->create_as( $this->author )['id'];
+		\update_post_meta(
+			$map_id,
+			PostType\META_CONTENT,
+			\wp_slash( '{"0":["a",{"name":"n","x":0,"y":0}]}' )
+		);
+
+		$response = $this->request( 'GET', '/maps/' . $map_id );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array(), $response->get_data()['content'] );
 	}
 
 	public function test_the_post_type_is_invisible_to_core_rest(): void {

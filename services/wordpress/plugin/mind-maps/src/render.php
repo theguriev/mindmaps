@@ -53,8 +53,16 @@ function normalize_args( mixed $raw_id, mixed $raw_height ): array {
 /**
  * The mount container every entry point emits.
  *
- * The app looks for `data-mind-maps-root`; several containers may share a page
- * and each reads its own `data-map-id`, falling back to the boot payload.
+ * The app looks for `data-mind-maps-root`. Several containers may share a page,
+ * so each one states its own case in full rather than inheriting the page-wide
+ * boot payload:
+ *
+ * - `data-map-id` is **always** present. The empty string means "no map — show
+ *   the list"; falling back to `boot.mapId` for a mount that omitted the
+ *   attribute made `[mind_map]` followed by `[mind_map id="42"]` render map 42
+ *   twice.
+ * - `data-can-edit` is `"1"` or `"0"`, resolved per mount, so a read-only embed
+ *   of someone else's map next to an editable one gets the right answer.
  *
  * @param array<string, mixed> $args `id` and `height`, plus optional `class`.
  */
@@ -71,14 +79,12 @@ function mount_markup( array $args ): string {
 	}
 
 	$attributes = \sprintf(
-		'class="%s" data-mind-maps-root="1" style="min-height:%dpx"',
+		'class="%s" data-mind-maps-root="1" style="min-height:%dpx" data-map-id="%s" data-can-edit="%s"',
 		\esc_attr( $classes ),
-		\absint( $normalized['height'] )
+		\absint( $normalized['height'] ),
+		\esc_attr( $map_id ?? '' ),
+		Assets\default_can_edit( $map_id ) ? '1' : '0'
 	);
-
-	if ( null !== $map_id ) {
-		$attributes .= \sprintf( ' data-map-id="%s"', \esc_attr( $map_id ) );
-	}
 
 	return \sprintf(
 		'<div %s><noscript>%s</noscript></div>',
