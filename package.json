@@ -18,7 +18,7 @@
     "test:integration": "turbo run test:integration",
     "wp:start": "pnpm --filter @mindmaps/wordpress run env:start",
     "wp:stop": "pnpm --filter @mindmaps/wordpress run env:stop",
-    "wp:package": "pnpm --filter @mindmaps/wordpress run package"
+    "wp:package": "turbo run package --filter=@mindmaps/wordpress"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

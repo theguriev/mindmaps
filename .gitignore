@@ -11,3 +11,6 @@ services/wordpress/vendor/
 services/wordpress/plugin/mind-maps/assets/
 services/wordpress/dist/
 .wp-env.override.json
+
+# turbo keeps a machine-local cache and per-task logs here
+.turbo/
