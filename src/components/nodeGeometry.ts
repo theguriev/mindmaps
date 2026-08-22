@@ -19,6 +19,24 @@ export const STICKY_PAD = 16
 export const STICKY_FONT =
   "'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', 'Comic Neue', cursive"
 
+/** Node markdown soft-wraps at this width unless the node was deliberately
+ *  resized (then its own width wins). */
+export const DEFAULT_WRAP_WIDTH = 480
+/** `prepareList`'s default node width. Editing persists it verbatim, so a node
+ *  carrying exactly this value has never been resized on purpose. */
+const NODE_DEFAULT_W = 140
+const MIN_WRAP_WIDTH = 80
+
+/** The width a node's markdown wraps at. */
+export function wrapWidthFor (node: MindNode): number {
+  if (node.sticky) return Math.max(MIN_WRAP_WIDTH, node.width - STICKY_PAD * 2)
+  const base = node.width !== NODE_DEFAULT_W ? node.width : DEFAULT_WRAP_WIDTH
+  if (node.component === 'root') {
+    return Math.max(MIN_WRAP_WIDTH, base - ROOT_PAD_X * 2)
+  }
+  return Math.max(MIN_WRAP_WIDTH, base)
+}
+
 /** Text placement relative to the node point, mirroring Node.vue's CSS. */
 export function nodeTextOffset (
   node: MindNode,
@@ -42,11 +60,13 @@ export function nodeLayoutFor (
   node: MindNode
 ): { layout: MarkdownLayout; isPlaceholder: boolean } {
   const isPlaceholder = node.name === ''
+  const maxWidth = wrapWidthFor(node)
   if (node.sticky) {
     return {
       layout: measureMarkdown(isPlaceholder ? STICKY_PLACEHOLDER : node.name, {
         align: 'left',
-        fontFamily: STICKY_FONT
+        fontFamily: STICKY_FONT,
+        maxWidth
       }),
       isPlaceholder
     }
@@ -58,7 +78,7 @@ export function nodeLayoutFor (
       ? ROOT_PLACEHOLDER
       : NODE_PLACEHOLDER
     : node.name
-  return { layout: measureMarkdown(text, { align }), isPlaceholder }
+  return { layout: measureMarkdown(text, { align, maxWidth }), isPlaceholder }
 }
 
 export interface NodeRect {
