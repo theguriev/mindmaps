@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MindMapScene } from '@/components/MindMapScene'
 import { editorOverlayAnchor } from '@/components/NodeScene'
+import { nodeBounds } from '@/components/nodeGeometry'
 import { TextEditorOverlay } from '@/components/TextEditorOverlay'
 import { EdgeEditor } from '@/components/EdgeEditor'
 import { Toolbar } from '@/components/Toolbar'
@@ -68,6 +69,8 @@ const ADD_OFFSET = new Map<number, number>([
 
 interface DragState {
   ids: NodeId[]
+  /** Every id inside the dragged branches — excluded from drop targeting. */
+  branchIds: Set<NodeId>
   lastX: number
   lastY: number
 }
@@ -116,7 +119,7 @@ function selectionRoots (
   return roots
 }
 
-/** Ids of visible nodes whose point falls inside a world-space rectangle. */
+/** Ids of visible nodes whose drawn box intersects a world-space rectangle. */
 function nodesInRect (
   list: Map<NodeId, MindNode>,
   x: number,
@@ -127,9 +130,30 @@ function nodesInRect (
   const ids: NodeId[] = []
   for (const n of list.values()) {
     if (n.hidden) continue
-    if (n.x >= x && n.x <= x + w && n.y >= y && n.y <= y + h) ids.push(n.id)
+    const b = nodeBounds(n)
+    if (b.x <= x + w && b.x + b.w >= x && b.y <= y + h && b.y + b.h >= y) {
+      ids.push(n.id)
+    }
   }
   return ids
+}
+
+/** Topmost visible node whose drawn box contains a world-space point,
+ *  excluding `exclude`d ids and sticky notes (they can't take children by
+ *  drop). "Topmost" = last in list order, matching paint order. */
+function dropTargetAt (
+  list: Map<NodeId, MindNode>,
+  x: number,
+  y: number,
+  exclude: Set<NodeId>
+): NodeId | null {
+  let target: NodeId | null = null
+  for (const n of list.values()) {
+    if (n.hidden || n.sticky || exclude.has(n.id)) continue
+    const b = nodeBounds(n)
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) target = n.id
+  }
+  return target
 }
 
 /** Move the selection with the arrow keys: ←parent, →first child, ↑/↓ siblings. */
@@ -181,6 +205,7 @@ function Editor ({ id }: { id: string }) {
     updateBranch,
     moveBranchesBy,
     toggleCollapsed,
+    reparentRoots,
     setReaction,
     setEditing,
     pushSnapshot,
@@ -199,6 +224,8 @@ function Editor ({ id }: { id: string }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [spacePan, setSpacePan] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<NodeId>>(new Set())
+  // Prospective new parent while a branch drag hovers over another node.
+  const [dropTargetId, setDropTargetId] = useState<NodeId | null>(null)
   const [marquee, setMarquee] = useState<
     { x: number; y: number; w: number; h: number } | null
   >(null)
@@ -269,8 +296,15 @@ function Editor ({ id }: { id: string }) {
       setSelectedIds(sel)
     }
     moveSnapRef.current = adjacency
+    const roots = selectionRoots(list, sel)
+    const nodes = Array.from(list.values())
+    const branchIds = new Set<NodeId>(roots)
+    for (const r of roots) {
+      for (const n of branch(nodes, r)) branchIds.add(n.id)
+    }
     dragRef.current = {
-      ids: selectionRoots(list, sel),
+      ids: roots,
+      branchIds,
       lastX: e.worldX,
       lastY: e.worldY
     }
@@ -378,6 +412,10 @@ function Editor ({ id }: { id: string }) {
         drag.lastX = world.x
         drag.lastY = world.y
       }
+      // Hovering another node's box makes it the drop target: releasing there
+      // reparents the dragged branches under it (highlighted in the scene).
+      const target = dropTargetAt(list, world.x, world.y, drag.branchIds)
+      setDropTargetId((prev) => (prev === target ? prev : target))
       return
     }
     if (marqueeRef.current) {
@@ -418,6 +456,12 @@ function Editor ({ id }: { id: string }) {
   })
 
   const endInteractions = () => {
+    // Dropping a dragged branch onto a highlighted node reparents it there.
+    // Part of the drag gesture, so it shares the drag's single undo step.
+    if (dragRef.current && dropTargetId != null) {
+      reparentRoots(dragRef.current.ids, dropTargetId)
+    }
+    if (dropTargetId != null) setDropTargetId(null)
     dragRef.current = null
     panRef.current = null
     resizeRef.current = null
@@ -488,10 +532,11 @@ function Editor ({ id }: { id: string }) {
     let maxX = -Infinity
     let maxY = -Infinity
     for (const n of nodes) {
-      minX = Math.min(minX, n.x)
-      minY = Math.min(minY, n.y)
-      maxX = Math.max(maxX, n.x)
-      maxY = Math.max(maxY, n.y)
+      const b = nodeBounds(n)
+      minX = Math.min(minX, b.x)
+      minY = Math.min(minY, b.y)
+      maxX = Math.max(maxX, b.x + b.w)
+      maxY = Math.max(maxY, b.y + b.h)
     }
     return { minX, minY, maxX, maxY }
   }
@@ -762,6 +807,7 @@ function Editor ({ id }: { id: string }) {
             offsetY={viewport.offsetY}
             hoveredId={hoveredId}
             selectedIds={selectedIds}
+            dropTargetId={dropTargetId}
             marquee={marquee}
             metaPressing={metaPressing}
             onColor={onColor}

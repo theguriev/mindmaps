@@ -1,37 +1,19 @@
 import type { MindNode, NodeId } from '@/mindmap/types'
 import type { PointerPayload } from '@/renderer/types'
 import { measureMarkdown } from '@/markdown/measure'
+import {
+  ROOT_PAD_X,
+  ROOT_PAD_Y,
+  STICKY_PAD,
+  nodeLayoutFor,
+  nodeTextOffset
+} from './nodeGeometry'
 
-const ROOT_PLACEHOLDER = '🖱Double click to edit'
-const NODE_PLACEHOLDER = '🖱Double click to edit that'
-
-const ROOT_PAD_X = 16
-const ROOT_PAD_Y = 8
-const GAP = 8
 const SELECT_COLOR = '#409eff'
+/** Highlight for the prospective new parent while dragging a branch over it. */
+const DROP_COLOR = '#10b981'
 
 const STICKY_FILL = '#faf4b0'
-const STICKY_PAD = 16
-const STICKY_FONT =
-  "'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', 'Comic Neue', cursive"
-
-/** Text placement relative to the node point, mirroring Node.vue's CSS. */
-function nodeTextOffset (
-  node: MindNode,
-  w: number,
-  h: number
-): { x: number; y: number } {
-  if (node.isHaveChildren) {
-    return {
-      x: node.isRightSide ? -w : 0,
-      y: node.isUpSide ? -h - GAP : GAP
-    }
-  }
-  return {
-    x: node.isRightSide ? GAP : -w - GAP,
-    y: -h / 2
-  }
-}
 
 /**
  * Where the editing overlay attaches (world space) and which corner of the
@@ -144,6 +126,8 @@ export interface NodeSceneProps {
   metaPressing: boolean
   /** Hidden-descendant count — present only when the node is collapsed. */
   collapsedCount?: number
+  /** The node is the prospective new parent of a branch being dragged over it. */
+  dropTarget: boolean
   onDragStart: (node: MindNode, e: PointerPayload) => void
   onEdit: (node: MindNode) => void
   onAdd: (node: MindNode) => void
@@ -157,6 +141,7 @@ export function NodeScene ({
   selected,
   metaPressing,
   collapsedCount,
+  dropTarget,
   onDragStart,
   onEdit,
   onAdd,
@@ -164,15 +149,7 @@ export function NodeScene ({
   onToggleCollapsed
 }: NodeSceneProps) {
   const isRoot = node.component === 'root'
-  const isPlaceholder = node.name === ''
-  const text = isPlaceholder
-    ? isRoot
-      ? ROOT_PLACEHOLDER
-      : NODE_PLACEHOLDER
-    : node.name
-  const align: 'left' | 'right' = isRoot ? 'left' : node.isRightSide ? 'left' : 'right'
-
-  const layout = measureMarkdown(text, { align })
+  const { layout, isPlaceholder } = nodeLayoutFor(node)
 
   // Editing is handled by the DOM textarea overlay.
   if (node.editing) return null
@@ -180,24 +157,23 @@ export function NodeScene ({
   // Optional emoji reaction badge, drawn ~24px at the node's top-right corner.
   const reactionLayout = node.reaction ? measureMarkdown('## ' + node.reaction) : null
 
+  const ringColor = dropTarget ? DROP_COLOR : SELECT_COLOR
+  const ring = selected || dropTarget
+
   // Sticky note: a yellow, handwritten card anchored at its top-left corner
   // (so the dashed tether from its parent meets the card, and the edit overlay
   // lines up with it).
   if (node.sticky) {
-    const stickyLayout = measureMarkdown(
-      isPlaceholder ? 'Sticky note' : node.name,
-      { align: 'left', fontFamily: STICKY_FONT }
-    )
     return (
       <group x={node.x} y={node.y}>
-        {selected && (
+        {ring && (
           <box
             x={-4}
             y={-4}
             width={node.width + 8}
             height={node.height + 8}
             radius={12}
-            stroke={SELECT_COLOR}
+            stroke={ringColor}
             strokeWidth={2}
           />
         )}
@@ -217,7 +193,7 @@ export function NodeScene ({
         <markdown
           x={STICKY_PAD}
           y={STICKY_PAD}
-          layout={stickyLayout}
+          layout={layout}
           opacity={isPlaceholder ? 0.45 : 1}
         />
         {reactionLayout && (
@@ -255,14 +231,14 @@ export function NodeScene ({
     const boxH = layout.height + ROOT_PAD_Y * 2
     return (
       <group x={node.x} y={node.y}>
-        {selected && (
+        {ring && (
           <box
             x={-boxW / 2 - 4}
             y={-boxH / 2 - 4}
             width={boxW + 8}
             height={boxH + 8}
             radius={7}
-            stroke={SELECT_COLOR}
+            stroke={ringColor}
             strokeWidth={2}
           />
         )}
@@ -329,14 +305,14 @@ export function NodeScene ({
   const { x: tx, y: ty } = nodeTextOffset(node, layout.width, layout.height)
   return (
     <group x={node.x} y={node.y}>
-      {selected && (
+      {ring && (
         <box
           x={tx - 4}
           y={ty - 4}
           width={layout.width + 8}
           height={layout.height + 8}
           radius={7}
-          stroke={SELECT_COLOR}
+          stroke={ringColor}
           strokeWidth={2}
         />
       )}

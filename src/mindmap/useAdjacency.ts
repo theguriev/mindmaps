@@ -273,6 +273,11 @@ export function useAdjacency (initial: Adjacency) {
         if (!next) next = new Map(prev)
         next.set(id, { ...node, parent: newParent })
       }
+      // Dropping into a folded branch unfolds it — the moved nodes must stay
+      // visible.
+      if (next && target.collapsed) {
+        next.set(newParent, { ...next.get(newParent)!, collapsed: undefined })
+      }
       return next ?? prev
     }, false)
   }

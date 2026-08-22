@@ -16,6 +16,7 @@ export function MindMapScene ({
   offsetY,
   hoveredId,
   selectedIds,
+  dropTargetId,
   marquee,
   metaPressing,
   onColor,
@@ -32,6 +33,8 @@ export function MindMapScene ({
   offsetY: number
   hoveredId: string | null
   selectedIds: Set<NodeId>
+  /** Prospective new parent while a branch drag hovers over it. */
+  dropTargetId: NodeId | null
   marquee: { x: number; y: number; w: number; h: number } | null
   metaPressing: boolean
   onColor: (edge: PathEdge, e: PointerPayload) => void
@@ -76,6 +79,7 @@ export function MindMapScene ({
             node={node}
             hovered={hoveredId === String(node.id)}
             selected={selectedIds.has(node.id)}
+            dropTarget={dropTargetId === node.id}
             metaPressing={metaPressing}
             collapsedCount={counts.get(node.id)}
             onDragStart={onDragStart}
