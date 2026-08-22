@@ -13,6 +13,32 @@ Work through this top to bottom. The order matters: behaviour changes come befor
 
 ---
 
+## Status
+
+Sections A and the shippable half of B are **done** — commits `c96cf9a`,
+`ab66bfc`, `5adf332`. `wp plugin check` reports no errors against the built
+ZIP, PHPCS runs clean on the plugin, and both PHP suites (85 unit, 62
+integration) and all 220 JS tests pass.
+
+Closed: 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 (section A); 2, 3, 4, 5, 17
+(section B).
+
+Two deliberate departures from what the auditors proposed:
+
+- **Item 1** is not implemented as an opt-in `_mindmap_public` flag. Published
+  maps stay readable, because that is what makes an embed work for the people
+  a post was written for, and the readme now says so plainly — including the
+  part worth knowing before writing something sensitive in a map. The flag
+  remains the better model if this ever needs to be tightened.
+- **Item 9's `.wp-env.json` pin** was reverted. `"core": null` means "latest",
+  which is 7.1 today and stays current on its own; pinning would have forced a
+  reinstall of a running development site for a reproducibility gain that the
+  readme's `Tested up to` already carries.
+
+Still open: **item 18** (two tabs overwrite each other — needs a server-minted
+version token through `wp.ts`, `App.tsx` and the editor), the trash-and-restore
+half of item 17, and all of section C.
+
 ## 0. Where NOT to spend time
 
 Verified good. Nothing to do here.
