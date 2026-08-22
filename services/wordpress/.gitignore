@@ -1,0 +1,14 @@
+# Composer
+/vendor/
+
+# PHPUnit
+/.phpunit.cache/
+/phpunit.xml
+/.phpunit.result.cache
+
+# Build output
+/dist/
+/plugin/mind-maps/assets/
+
+# wp-env
+/.wp-env.override.json
