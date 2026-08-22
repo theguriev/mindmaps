@@ -3,8 +3,10 @@
  * The "Mind Maps" admin screen.
  *
  * It mounts the very same bundle the front end uses; the only difference is
- * the boot payload, which always reports edit access (the screen itself is
- * capability-gated) and picks the map up from `?map=<id>`.
+ * that the boot payload picks its map up from `?map=<id>` rather than from the
+ * page's content. Write access is still decided per map: reaching the screen
+ * needs `edit_posts`, editing the map someone asked for needs `edit_post` on
+ * that map.
  *
  * @package MindMaps
  */
@@ -77,8 +79,12 @@ function enqueue_admin( mixed $hook_suffix = '' ): void {
 		return;
 	}
 
+	// No `can_edit` override: `MENU_CAPABILITY` says the user may reach the
+	// screen, not that they may write whichever map `?map=` names. Forcing
+	// `true` handed anyone with `edit_posts` a fully writable editor over a map
+	// every REST write would then refuse. `default_can_edit()` decides.
 	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen selector, no state change.
-	Assets\enqueue( requested_map_id( \wp_unslash( $_GET ) ), true );
+	Assets\enqueue( requested_map_id( \wp_unslash( $_GET ) ) );
 }
 
 /**

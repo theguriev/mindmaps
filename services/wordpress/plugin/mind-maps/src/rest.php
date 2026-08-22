@@ -71,7 +71,11 @@ function register_routes(): void {
 				'args'                => $id_arg,
 			),
 			array(
-				'methods'             => 'PUT, PATCH',
+				// PUT only. `handle_update()` is a full replace — it writes the
+				// document it was handed, whole — so accepting PATCH as well
+				// would turn `PATCH {"title":"x"}` into a silent 200 that wipes
+				// the map's content. See `docs/wordpress-contract.md`.
+				'methods'             => 'PUT',
 				'callback'            => __NAMESPACE__ . '\\handle_update',
 				'permission_callback' => __NAMESPACE__ . '\\can_edit_map',
 				'args'                => $id_arg,
@@ -238,13 +242,9 @@ function handle_list( WP_REST_Request $request ) {
  * @param WP_REST_Request $request Incoming request.
  */
 function handle_create( WP_REST_Request $request ) {
-	$payload = $request->get_json_params();
-	if ( ! \is_array( $payload ) ) {
-		return error_invalid_document();
-	}
-	unset( $payload['id'] );
-
-	$doc = Document\parse_document( $payload, 'new' );
+	// The incoming id is overwritten rather than trusted; WordPress assigns the
+	// real one a moment later and `handle_create` never reads this placeholder.
+	$doc = Document\parse_document( with_id( json_body( $request ), 'new' ), 'new' );
 	if ( null === $doc ) {
 		return error_invalid_document();
 	}
@@ -272,15 +272,10 @@ function handle_get( WP_REST_Request $request ) {
  * @param WP_REST_Request $request Incoming request.
  */
 function handle_update( WP_REST_Request $request ) {
-	$id      = request_id( $request );
-	$payload = $request->get_json_params();
-	if ( ! \is_array( $payload ) ) {
-		return error_invalid_document();
-	}
-	// The route's id is authoritative; a body that disagrees does not get a vote.
-	$payload['id'] = (string) $id;
+	$id = request_id( $request );
 
-	$doc = Document\parse_document( $payload, (string) $id );
+	// The route's id is authoritative; a body that disagrees does not get a vote.
+	$doc = Document\parse_document( with_id( json_body( $request ), (string) $id ), (string) $id );
 	if ( null === $doc ) {
 		return error_invalid_document();
 	}
@@ -315,6 +310,52 @@ function handle_delete( WP_REST_Request $request ) {
 /* -------------------------------------------------------------------------
  * Small shared helpers.
  * ---------------------------------------------------------------------- */
+
+/**
+ * The request body, decoded the way the validator needs to see it.
+ *
+ * Deliberately not `WP_REST_Request::get_json_params()`: that decodes with
+ * `json_decode( …, true )`, which flattens JSON objects into PHP associative
+ * arrays — and `{"0":[…],"1":[…]}` then arrives as something `array_is_list()`
+ * calls a list, letting an object-shaped `content` through a check the
+ * TypeScript validator's `Array.isArray` would have failed. Decoding objects
+ * as `stdClass` keeps the two shapes apart.
+ *
+ * @param WP_REST_Request $request Incoming request.
+ */
+function json_body( WP_REST_Request $request ) {
+	$content_type = $request->get_content_type();
+	$media_type   = \is_array( $content_type ) ? (string) ( $content_type['value'] ?? '' ) : '';
+	// Same gate `get_json_params()` applies: a body only counts as a document
+	// when the client says it is JSON.
+	if ( 'application/json' !== $media_type && 'application/ld+json' !== $media_type ) {
+		return null;
+	}
+
+	return Document\decode_json( $request->get_body() );
+}
+
+/**
+ * Stamp an id onto a decoded body, whatever shape it arrived in.
+ *
+ * Anything that is not a record is passed through untouched, so a body of
+ * `"just a string"` still fails validation instead of being wrapped into
+ * something that passes.
+ *
+ * @param mixed  $payload Decoded request body.
+ * @param string $id      Id the server has decided on.
+ */
+function with_id( mixed $payload, string $id ): mixed {
+	if ( $payload instanceof \stdClass ) {
+		$payload->id = $id;
+		return $payload;
+	}
+	if ( \is_array( $payload ) ) {
+		$payload['id'] = $id;
+		return $payload;
+	}
+	return $payload;
+}
 
 /**
  * The `id` path parameter as a post id.

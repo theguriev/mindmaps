@@ -89,7 +89,7 @@ function create_map( array $doc, int $author ): int|WP_Error {
 	$post_id = \wp_insert_post(
 		array(
 			'post_type'   => PostType\POST_TYPE,
-			'post_status' => 'publish',
+			'post_status' => create_status(),
 			'post_title'  => \wp_slash( title_of( $doc ) ),
 			'post_author' => $author,
 		),
@@ -103,6 +103,20 @@ function create_map( array $doc, int $author ): int|WP_Error {
 	write_meta( (int) $post_id, $doc );
 
 	return (int) $post_id;
+}
+
+/**
+ * The status a new map is created in.
+ *
+ * A map has no public URL, so `publish` buys nothing — and with
+ * `map_meta_cap`, `edit_post`/`delete_post` on a *published* post resolve to
+ * `edit_published_posts`/`delete_published_posts`, which a Contributor does not
+ * have. Publishing a Contributor's map would hand them an editor whose every
+ * later save and delete 403s. Creating it as a draft (already a readable
+ * status) keeps the map theirs to edit.
+ */
+function create_status(): string {
+	return \current_user_can( 'publish_posts' ) ? 'publish' : 'draft';
 }
 
 /**
@@ -190,14 +204,16 @@ function post_to_document( WP_Post $post ): array {
 /**
  * Decode the stored content JSON into something parse_content() can chew on.
  *
+ * Goes through `Document\decode_json()` so stored meta is held to the same
+ * shape rules as a request body: a row someone wrote behind the plugin's back
+ * as `{"0":[…]}` is a JSON object, not a list, and must be rejected rather than
+ * silently accepted because PHP's associative decoding blurred the difference.
+ *
  * @param mixed $stored Raw meta value.
  * @return mixed Decoded value, or an empty list when the meta is unusable.
  */
 function decode_content( mixed $stored ): mixed {
-	if ( ! \is_string( $stored ) || '' === $stored ) {
-		return array();
-	}
-	$decoded = \json_decode( $stored, true );
+	$decoded = Document\decode_json( $stored );
 	return null === $decoded ? array() : $decoded;
 }
 

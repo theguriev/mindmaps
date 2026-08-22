@@ -19,11 +19,13 @@ namespace MindMaps\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 
+use function MindMaps\Document\decode_json;
 use function MindMaps\Document\parse_content;
 use function MindMaps\Document\parse_document;
 use function MindMaps\Document\to_wire;
 
 use const MindMaps\Document\DOC_VERSION;
+use const MindMaps\Document\MAX_NODES;
 
 final class DocumentTest extends TestCase {
 
@@ -341,6 +343,141 @@ final class DocumentTest extends TestCase {
 
 	public function test_accepts_an_empty_document(): void {
 		$this->assertSame( array(), parse_content( array() ) );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * JSON shape: an object is not a list, however PHP decodes it.
+	 * ------------------------------------------------------------------ */
+
+	public function test_decode_json_keeps_objects_and_arrays_apart(): void {
+		// The trap this whole group exists for: decoded associatively, an
+		// object with consecutive numeric keys is indistinguishable from a
+		// list, and `array_is_list()` waves it through. TypeScript's
+		// `Array.isArray` never would.
+		$associative = \json_decode( '{"0":"a","1":"b"}', true );
+		$this->assertTrue( \is_array( $associative ) && \array_is_list( $associative ) );
+
+		$this->assertInstanceOf( \stdClass::class, decode_json( '{"0":"a","1":"b"}' ) );
+		$this->assertInstanceOf( \stdClass::class, decode_json( '{}' ) );
+		$this->assertSame( array( 'a', 'b' ), decode_json( '["a","b"]' ) );
+		$this->assertNull( decode_json( 'not json' ) );
+		$this->assertNull( decode_json( '' ) );
+		$this->assertNull( decode_json( null ) );
+	}
+
+	/**
+	 * @param string $json A body whose `content` is an object, not an array.
+	 * @dataProvider object_shaped_content
+	 */
+	public function test_rejects_object_shaped_content( string $json ): void {
+		$this->assertNull( parse_document( decode_json( $json ) ), $json );
+	}
+
+	/**
+	 * @return array<string, array{0: string}>
+	 */
+	public static function object_shaped_content(): array {
+		$node = '{"name":"n","x":0,"y":0}';
+
+		return array(
+			'content is an empty object'   => array( '{"id":"a","content":{}}' ),
+			'content is a keyed object'    => array( '{"id":"a","content":{"nodes":[]}}' ),
+			// The interesting one: numeric keys from 0 up, which decodes to a
+			// PHP list under `json_decode( …, true )`.
+			'content is a numbered object' => array( '{"id":"a","content":{"0":["a",' . $node . '],"1":["b",' . $node . ']}}' ),
+			'an entry is an object'        => array( '{"id":"a","content":[{"0":"a","1":' . $node . '}]}' ),
+			'an entry is a keyed object'   => array( '{"id":"a","content":[{"key":"a","node":' . $node . '}]}' ),
+		);
+	}
+
+	public function test_parse_content_rejects_an_object_even_when_it_looks_like_a_list(): void {
+		$this->assertNull( parse_content( decode_json( '{"0":["a",{"name":"n","x":0,"y":0}]}' ) ) );
+		$this->assertNull( parse_content( decode_json( '{}' ) ) );
+	}
+
+	public function test_still_parses_a_document_decoded_as_objects(): void {
+		// The other half of the same change: nodes and documents legitimately
+		// arrive as `stdClass` now, and must keep parsing.
+		$doc = parse_document(
+			decode_json( '{"id":"7","title":"T","content":[["0",{"name":"Root","x":1,"y":2,"collapsed":true}]],"meta":{"template":"1"}}' )
+		);
+
+		$this->assertNotNull( $doc );
+		$this->assertSame( '7', $doc['id'] );
+		$this->assertSame( 'T', $doc['title'] );
+		$this->assertSame( array( 'template' => '1' ), $doc['meta'] );
+		$this->assertSame(
+			array(
+				'name'      => 'Root',
+				'x'         => 1,
+				'y'         => 2,
+				'collapsed' => true,
+			),
+			$doc['content'][0][1]
+		);
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Size and cost bounds.
+	 * ------------------------------------------------------------------ */
+
+	public function test_rejects_a_document_above_the_node_ceiling(): void {
+		$entries = array();
+		for ( $i = 0; $i <= MAX_NODES; $i++ ) {
+			$entries[] = array( (string) $i, self::node() );
+		}
+
+		$this->assertCount( MAX_NODES + 1, $entries );
+		$this->assertNull( parse_content( $entries ), 'A document above MAX_NODES must be refused outright.' );
+		$this->assertNull(
+			parse_document(
+				array(
+					'id'      => 'a',
+					'content' => $entries,
+				)
+			)
+		);
+
+		// And exactly at the ceiling it is still accepted.
+		\array_pop( $entries );
+		$this->assertNotNull( parse_content( $entries ) );
+	}
+
+	public function test_validates_a_long_chain_in_linear_time(): void {
+		// Cycle detection used to walk every node's full parent chain from a
+		// fresh visited set, which is quadratic on exactly the shape a hostile
+		// client would send: one chain, MAX_NODES long. On the reference
+		// machine that took ~1s; memoized it takes ~10ms. The bound below sits
+		// between the two with room on either side.
+		$entries = array( array( '0', self::node() ) );
+		for ( $i = 1; $i < MAX_NODES; $i++ ) {
+			$entries[] = array( (string) $i, self::node( array( 'parent' => (string) ( $i - 1 ) ) ) );
+		}
+
+		$started = \microtime( true );
+		$content = parse_content( $entries );
+		$elapsed = \microtime( true ) - $started;
+
+		$this->assertNotNull( $content );
+		$this->assertCount( MAX_NODES, $content );
+		$this->assertLessThan(
+			0.25,
+			$elapsed,
+			\sprintf( 'A %d-node chain took %.3fs — cycle detection is not linear.', MAX_NODES, $elapsed )
+		);
+	}
+
+	public function test_still_rejects_a_cycle_hidden_behind_a_long_acyclic_prefix(): void {
+		// Memoizing "this node reaches a root" must not let a cycle further
+		// along the document slip through.
+		$entries = array( array( '0', self::node() ) );
+		for ( $i = 1; $i < 1000; $i++ ) {
+			$entries[] = array( (string) $i, self::node( array( 'parent' => (string) ( $i - 1 ) ) ) );
+		}
+		$entries[] = array( 'x', self::node( array( 'parent' => 'y' ) ) );
+		$entries[] = array( 'y', self::node( array( 'parent' => 'x' ) ) );
+
+		$this->assertNull( parse_content( $entries ) );
 	}
 
 	/* ---------------------------------------------------------------------

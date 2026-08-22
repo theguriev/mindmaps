@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace MindMaps\Assets;
 
+use MindMaps\Render;
 use MindMaps\Rest;
 
 /** Script handle for the bundle. */
@@ -152,18 +153,17 @@ function boot_script( string $json ): string {
 }
 
 /**
- * Run-once bookkeeping for things that must be printed a single time per
- * request (the boot payload). Returns true the first time a key is claimed.
+ * Whether one of the given inline script lines is our boot payload.
  *
- * @param string $key Arbitrary key.
+ * @param mixed $lines Whatever `WP_Scripts::get_data( …, 'before' )` returned.
  */
-function claim_once( string $key ): bool {
-	static $claimed = array();
-	if ( isset( $claimed[ $key ] ) ) {
-		return false;
+function holds_boot_script( mixed $lines ): bool {
+	foreach ( \is_array( $lines ) ? $lines : array( $lines ) as $line ) {
+		if ( \is_string( $line ) && \str_contains( $line, 'window.mindMapsBoot' ) ) {
+			return true;
+		}
 	}
-	$claimed[ $key ] = true;
-	return true;
+	return false;
 }
 
 /* -------------------------------------------------------------------------
@@ -269,7 +269,7 @@ function enqueue( ?string $map_id = null, ?bool $can_edit = null ): void {
 		++$index;
 	}
 
-	if ( ! claim_once( 'boot' ) ) {
+	if ( boot_printed() ) {
 		return;
 	}
 
@@ -284,6 +284,17 @@ function enqueue( ?string $map_id = null, ?bool $can_edit = null ): void {
 
 	$json = \wp_json_encode( $payload );
 	\wp_add_inline_script( SCRIPT_HANDLE, boot_script( \is_string( $json ) ? $json : '{}' ), 'before' );
+}
+
+/**
+ * Whether the boot payload has already been attached to this request.
+ *
+ * Asking the script queue rather than keeping a run-once flag of our own: the
+ * queue *is* the state that matters, it is what a second `enqueue()` would
+ * duplicate, and it resets with the request instead of with the process.
+ */
+function boot_printed(): bool {
+	return holds_boot_script( \wp_scripts()->get_data( SCRIPT_HANDLE, 'before' ) );
 }
 
 /**
@@ -315,24 +326,96 @@ function maybe_enqueue_front(): void {
 		return;
 	}
 
-	$renders_map = \has_shortcode( (string) $post->post_content, 'mind_map' )
-		|| \has_block( 'mind-maps/map', $post );
+	$renders_map = \has_shortcode( (string) $post->post_content, Render\SHORTCODE_TAG )
+		|| \has_block( Render\BLOCK_NAME, $post );
 
 	if ( $renders_map ) {
-		enqueue( first_shortcode_map_id( (string) $post->post_content ) );
+		enqueue( first_map_id( (string) $post->post_content ) );
 	}
 }
 
 /**
- * The id of the first `[mind_map]` on a page, for the global boot payload.
- * Individual mounts still carry their own `data-map-id`.
+ * The id of the first map a page embeds, whichever syntax embedded it.
+ *
+ * This runs in `wp_enqueue_scripts`, long before any block or shortcode
+ * renders, so it has to find the id itself — and it has to look at blocks too.
+ * Matching only the shortcode left a block-embedded map booting with no id at
+ * all, which turned the payload's `canEdit` into a role check
+ * (`default_can_edit( null )`) instead of an `edit_post` check on the map the
+ * page actually shows, and the block's own later `enqueue()` could not correct
+ * a payload that had already been printed.
  *
  * @param string $content Post content.
+ */
+function first_map_id( string $content ): ?string {
+	if ( \function_exists( 'parse_blocks' ) ) {
+		$id = first_block_map_id( \parse_blocks( $content ) );
+		if ( null !== $id ) {
+			return $id;
+		}
+	}
+
+	return first_shortcode_map_id( $content );
+}
+
+/**
+ * Walk parsed blocks in document order and return the first map id found —
+ * from a `mind-maps/map` block's `id` attribute, or from a `[mind_map]` sitting
+ * in a block's own HTML (a classic/freeform block, a paragraph, …).
+ *
+ * @param mixed $blocks Blocks from `parse_blocks()`.
+ */
+function first_block_map_id( mixed $blocks ): ?string {
+	if ( ! \is_array( $blocks ) ) {
+		return null;
+	}
+
+	foreach ( $blocks as $block ) {
+		if ( ! \is_array( $block ) ) {
+			continue;
+		}
+
+		if ( Render\BLOCK_NAME === ( $block['blockName'] ?? null ) ) {
+			$attributes = $block['attrs'] ?? null;
+			$id         = map_id_string( \is_array( $attributes ) ? ( $attributes['id'] ?? null ) : null );
+			if ( null !== $id ) {
+				return $id;
+			}
+		}
+
+		$html = $block['innerHTML'] ?? null;
+		$id   = \is_string( $html ) ? first_shortcode_map_id( $html ) : null;
+		if ( null !== $id ) {
+			return $id;
+		}
+
+		$id = first_block_map_id( $block['innerBlocks'] ?? null );
+		if ( null !== $id ) {
+			return $id;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * The id of the first `[mind_map]` in a chunk of content.
+ *
+ * @param string $content Content to scan.
  */
 function first_shortcode_map_id( string $content ): ?string {
 	if ( ! \preg_match( '/\[mind_map\b[^\]]*\bid=["\']?(\d+)/', $content, $matches ) ) {
 		return null;
 	}
-	$id = \absint( $matches[1] );
+	return map_id_string( $matches[1] );
+}
+
+/**
+ * A positive map id as a string, or null for anything else.
+ *
+ * @param mixed $value Candidate id.
+ */
+function map_id_string( mixed $value ): ?string {
+	$id = \is_scalar( $value ) ? \absint( $value ) : 0;
 	return $id > 0 ? (string) $id : null;
 }
