@@ -1,0 +1,134 @@
+import { describe, expect, it } from 'vitest'
+import {
+  BootError,
+  editingAllowed,
+  intlLocale,
+  parseBoot,
+  resolveMapId,
+  type BootConfig
+} from './boot'
+
+/** The payload exactly as `docs/wordpress-contract.md` documents it. */
+const VALID = {
+  root: 'https://site.test/wp-json/mindmaps/v1',
+  nonce: 'a1b2c3d4e5',
+  mapId: '42',
+  canEdit: true,
+  locale: 'en_US'
+}
+
+describe('parseBoot', () => {
+  it('accepts the documented payload', () => {
+    expect(parseBoot(VALID)).toEqual({
+      root: 'https://site.test/wp-json/mindmaps/v1',
+      nonce: 'a1b2c3d4e5',
+      mapId: '42',
+      canEdit: true,
+      locale: 'en_US'
+    })
+  })
+
+  it('drops a trailing slash from the REST root', () => {
+    expect(parseBoot({ ...VALID, root: 'https://site.test/wp-json/mindmaps/v1/' }).root)
+      .toBe('https://site.test/wp-json/mindmaps/v1')
+  })
+
+  it('reports a missing payload by name', () => {
+    expect(() => parseBoot(undefined)).toThrow(BootError)
+    expect(() => parseBoot(undefined)).toThrow(/window\.mindMapsBoot is missing/)
+    expect(() => parseBoot(null)).toThrow(BootError)
+  })
+
+  it('rejects a payload that is not an object', () => {
+    expect(() => parseBoot('nope')).toThrow(/must be an object/)
+    expect(() => parseBoot(['nope'])).toThrow(/must be an object/)
+  })
+
+  it('rejects a payload without a usable REST root', () => {
+    expect(() => parseBoot({ canEdit: true })).toThrow(/root must be the REST root URL/)
+    expect(() => parseBoot({ ...VALID, root: '   ' })).toThrow(/root must be/)
+    expect(() => parseBoot({ ...VALID, root: 42 })).toThrow(/root must be/)
+  })
+
+  it('treats an absent, empty or zero mapId as "show the list"', () => {
+    expect(parseBoot({ root: VALID.root, canEdit: true }).mapId).toBeUndefined()
+    expect(parseBoot({ ...VALID, mapId: '' }).mapId).toBeUndefined()
+    expect(parseBoot({ ...VALID, mapId: '0' }).mapId).toBeUndefined()
+    expect(parseBoot({ ...VALID, mapId: 0 }).mapId).toBeUndefined()
+    expect(parseBoot({ ...VALID, mapId: null }).mapId).toBeUndefined()
+  })
+
+  it('normalizes a numeric post id to a string', () => {
+    expect(parseBoot({ ...VALID, mapId: 42 }).mapId).toBe('42')
+    expect(parseBoot({ ...VALID, mapId: ' 42 ' }).mapId).toBe('42')
+  })
+
+  it('fails closed on anything but a literal canEdit: true', () => {
+    expect(parseBoot({ ...VALID, canEdit: false }).canEdit).toBe(false)
+    expect(parseBoot({ ...VALID, canEdit: 'true' }).canEdit).toBe(false)
+    expect(parseBoot({ ...VALID, canEdit: 1 }).canEdit).toBe(false)
+    expect(parseBoot({ root: VALID.root }).canEdit).toBe(false)
+  })
+
+  it('treats a blank nonce or locale as absent', () => {
+    const boot = parseBoot({ ...VALID, nonce: '', locale: '' })
+    expect(boot.nonce).toBeUndefined()
+    expect(boot.locale).toBeUndefined()
+  })
+})
+
+describe('resolveMapId', () => {
+  const boot = parseBoot(VALID)
+
+  it('prefers the mount point\'s own data-map-id', () => {
+    expect(resolveMapId('7', boot)).toBe('7')
+  })
+
+  it('falls back to the payload when the element has no override', () => {
+    expect(resolveMapId(undefined, boot)).toBe('42')
+    expect(resolveMapId(null, boot)).toBe('42')
+    expect(resolveMapId('', boot)).toBe('42')
+    expect(resolveMapId('0', boot)).toBe('42')
+  })
+
+  it('yields nothing when neither side names a map', () => {
+    const listBoot = parseBoot({ root: VALID.root, canEdit: true })
+    expect(resolveMapId(undefined, listBoot)).toBeUndefined()
+  })
+})
+
+describe('editingAllowed', () => {
+  const withBoot = (over: Partial<BootConfig>): BootConfig => ({
+    ...parseBoot(VALID),
+    ...over
+  })
+
+  it('allows editing when the server says so and a nonce is present', () => {
+    expect(editingAllowed(withBoot({}))).toBe(true)
+  })
+
+  it('refuses when the server says the user may not edit', () => {
+    expect(editingAllowed(withBoot({ canEdit: false }))).toBe(false)
+  })
+
+  it('refuses without a nonce, which every write would need anyway', () => {
+    expect(editingAllowed(withBoot({ nonce: undefined }))).toBe(false)
+  })
+
+  it('is read-only for every malformed payload that still parses', () => {
+    expect(editingAllowed(parseBoot({ root: VALID.root }))).toBe(false)
+    expect(editingAllowed(parseBoot({ root: VALID.root, canEdit: 'yes' }))).toBe(false)
+    expect(editingAllowed(parseBoot({ root: VALID.root, canEdit: true }))).toBe(false)
+  })
+})
+
+describe('intlLocale', () => {
+  it('turns a WordPress locale into a BCP-47 tag', () => {
+    expect(intlLocale(parseBoot(VALID))).toBe('en-US')
+    expect(intlLocale(parseBoot({ ...VALID, locale: 'pt_BR' }))).toBe('pt-BR')
+  })
+
+  it('is undefined when the payload has no locale, so Intl uses the browser\'s', () => {
+    expect(intlLocale(parseBoot({ root: VALID.root }))).toBeUndefined()
+  })
+})
