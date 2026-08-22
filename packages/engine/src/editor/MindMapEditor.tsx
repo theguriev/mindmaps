@@ -63,7 +63,7 @@ import {
 } from '../components/ui/dropdown-menu'
 import { MindMapScene } from '../components/MindMapScene'
 import { editorOverlayAnchor } from '../components/NodeScene'
-import { nodeBounds } from '../components/nodeGeometry'
+import { EDITOR_MIN_H, EDITOR_MIN_W, nodeBounds } from '../components/nodeGeometry'
 import { TextEditorOverlay } from '../components/TextEditorOverlay'
 import { EdgeEditor } from '../components/EdgeEditor'
 import { Toolbar } from '../components/Toolbar'
@@ -594,8 +594,18 @@ export function MindMapEditor ({
       const node = list.get(r.id)
       if (!node) return
       const scale = viewport.scaleRef.current
-      const width2 = Math.max(50, r.startW + (r.signX * (event.clientX - r.startClientX)) / scale)
-      const height2 = Math.max(32, r.startH + (r.signY * (event.clientY - r.startClientY)) / scale)
+      // The overlay's own floors: clamping lower than the textarea can render
+      // keeps shrinking `node.width` under a box that has stopped moving, and
+      // a width under the floor reads as "never resized" once the editor
+      // closes — the node would snap out to the default wrap width.
+      const width2 = Math.max(
+        EDITOR_MIN_W,
+        r.startW + (r.signX * (event.clientX - r.startClientX)) / scale
+      )
+      const height2 = Math.max(
+        EDITOR_MIN_H,
+        r.startH + (r.signY * (event.clientY - r.startClientY)) / scale
+      )
       recordMove()
       update({ ...node, width: width2, height: height2 })
     }
@@ -749,7 +759,7 @@ export function MindMapEditor ({
 
   const onStartResize = (
     node: MindNode,
-    e: MouseEvent,
+    e: ReactPointerEvent,
     dir: { signX: number; signY: number }
   ) => {
     moveSnapRef.current = adjacency
@@ -1245,6 +1255,7 @@ export function MindMapEditor ({
             }
           })()}
           onPick={(patch) => updateBranch(color.visible!.fromID, patch)}
+          onClose={closeColor}
         />
       )}
     </div>
