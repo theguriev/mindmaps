@@ -243,7 +243,14 @@ function MapList ({
 
   const go = (map: MapDoc) => onOpen(String(map.id))
 
-  /** Runs a mutation, surfacing its failure instead of dropping the rejection. */
+  /**
+   * Runs a mutation, surfacing its failure instead of dropping the rejection.
+   *
+   * The list is re-read either way. A mutation that failed is exactly when the
+   * list on screen is least trustworthy — somebody else may have deleted or
+   * renamed the map this one tripped over — so refreshing it is part of
+   * reporting the failure, not part of the success path.
+   */
   const act = async (work: () => Promise<void>, done?: () => void) => {
     setActionError(null)
     try {
@@ -251,6 +258,7 @@ function MapList ({
     } catch (error) {
       setActionError(error)
     } finally {
+      reload()
       done?.()
     }
   }
@@ -258,13 +266,11 @@ function MapList ({
   const remove = (map: MapDoc, done: () => void) =>
     act(async () => {
       await store.remove([String(map.id)])
-      reload()
     }, done)
 
   const setTemplateFlag = (map: MapDoc, template: string, done: () => void) =>
     act(async () => {
       await store.save(String(map.id), { ...map, meta: { template } })
-      reload()
     }, done)
 
   const chooseTemplate = (template: TemplateDoc) =>
@@ -357,13 +363,25 @@ function MapList ({
  * The embed's two states. There is no router on a WordPress page — the URL
  * belongs to the post — so which map is open is component state, seeded from
  * the mount point's `data-map-id` (or the boot payload's `mapId`).
+ *
+ * `canEdit` arrives per mount too (`main.tsx` resolves it from the mount
+ * point's `data-can-edit`): one page can carry a map the visitor owns next to
+ * somebody else's, so a page-wide answer would be wrong for one of them.
  */
-export function App ({ boot, mapId }: { boot: BootConfig; mapId?: string }) {
+export function App ({
+  boot,
+  mapId,
+  canEdit
+}: {
+  boot: BootConfig
+  mapId?: string
+  canEdit?: boolean
+}) {
   const store = useMemo(
     () => createWpStore({ root: boot.root, nonce: boot.nonce }),
     [boot.root, boot.nonce]
   )
-  const canEdit = editingAllowed(boot)
+  const mayEdit = canEdit ?? editingAllowed(boot)
   const locale = intlLocale(boot)
 
   // A pinned map is the whole embed: there is no list behind it to go back to.
@@ -375,13 +393,13 @@ export function App ({ boot, mapId }: { boot: BootConfig; mapId?: string }) {
       <MapView
         store={store}
         id={openId}
-        canEdit={canEdit}
+        canEdit={mayEdit}
         onBack={pinned ? undefined : () => setOpenId(undefined)}
       />
     )
   }
 
   return (
-    <MapList store={store} canEdit={canEdit} locale={locale} onOpen={setOpenId} />
+    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
   )
 }

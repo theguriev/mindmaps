@@ -86,27 +86,57 @@ export function parseBoot (raw: unknown): BootConfig {
 }
 
 /**
- * The map a single mount point shows. Several embeds may sit on one page, so
- * the element's own `data-map-id` wins over the page-wide payload.
+ * The map a single mount point shows.
+ *
+ * Several embeds may sit on one page — `[mind_map id="42"]` next to a bare
+ * `[mind_map]` — so the mount point's own `data-map-id` decides, including
+ * when it is empty: the plugin prints the attribute on every mount, and an
+ * empty one is a deliberate "show the list", not a missing value. Only an
+ * attribute that is absent entirely (a page rendered by an older plugin, which
+ * printed it only for a pinned map) falls back to the page-wide payload.
  */
 export function resolveMapId (
   attribute: string | null | undefined,
   boot: BootConfig
 ): string | undefined {
-  return optionalId(attribute) ?? boot.mapId
+  if (attribute === undefined || attribute === null) return boot.mapId
+  return optionalId(attribute)
 }
 
 /**
- * Whether this embed may write.
+ * Whether a single mount point may write.
  *
- * `canEdit` is the server's answer, but a payload without a nonce cannot write
- * either — WordPress rejects every cookie-authenticated POST/PUT/DELETE that
- * arrives without `X-WP-Nonce`. Deciding it here, once, is what keeps the UI
- * and the store in agreement: read-only means the store is never called for a
- * mutation, not that a button is hidden.
+ * Permission is per map, not per page: one post can carry a map the visitor
+ * owns next to somebody else's, so the plugin prints `data-can-edit` on every
+ * mount and it wins over the payload's page-wide `canEdit`. An attribute that
+ * is absent entirely (an older plugin) falls back to the payload.
+ *
+ * The nonce is the other half. WordPress rejects every cookie-authenticated
+ * POST/PUT/DELETE that arrives without `X-WP-Nonce`, so a payload without one
+ * cannot write whatever the attribute says. Deciding both here, once, is what
+ * keeps the UI and the store in agreement: read-only means the store is never
+ * called for a mutation, not that a button is hidden.
+ */
+export function resolveCanEdit (
+  attribute: string | null | undefined,
+  boot: BootConfig
+): boolean {
+  const granted =
+    attribute === undefined || attribute === null
+      ? boot.canEdit
+      : // Fail closed, like `parseBoot` does with the payload: only the values
+        // the plugin documents grant write access; anything else is read-only.
+        ['1', 'true'].includes(attribute.trim().toLowerCase())
+
+  return granted && boot.nonce !== undefined
+}
+
+/**
+ * Whether the page-wide payload allows editing, for a mount point that carries
+ * no `data-can-edit` of its own.
  */
 export function editingAllowed (boot: BootConfig): boolean {
-  return boot.canEdit && boot.nonce !== undefined
+  return resolveCanEdit(undefined, boot)
 }
 
 /** WordPress locales are `en_US`; `Intl` wants BCP-47 `en-US`. */

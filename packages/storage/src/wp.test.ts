@@ -60,6 +60,40 @@ describe('createWpStore', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`${ROOT}/maps/a%20b%2Fc`)
   })
 
+  it('ignores an id that is already gone, as the MapStore contract says', async () => {
+    // Two editors with the list open, both deleting the same map: the second
+    // DELETE 404s, and "it is not there any more" is what was asked for.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ code: 'mindmap_not_found' }, 404))
+    await expect(
+      createWpStore({ root: ROOT, fetch: fetchMock }).remove(['9'])
+    ).resolves.toBeUndefined()
+  })
+
+  it('settles every id before reporting a failure', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 'mindmap_forbidden' }, 403))
+      .mockResolvedValueOnce(jsonResponse({ code: 'mindmap_not_found' }, 404))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true, id: '3' }))
+
+    const error = await createWpStore({ root: ROOT, fetch: fetchMock })
+      .remove(['1', '2', '3'])
+      .catch((e: unknown) => e)
+
+    // The map nobody could touch is reported, and the deletable one is still
+    // deleted rather than abandoned at the first rejection.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `${ROOT}/maps/1`,
+      `${ROOT}/maps/2`,
+      `${ROOT}/maps/3`
+    ])
+    expect(error).toBeInstanceOf(MapStoreError)
+    expect(error).toMatchObject({ code: 'mindmap_forbidden', status: 403 })
+  })
+
   it('maps a 404 to null on get', async () => {
     const fetchMock = vi
       .fn()

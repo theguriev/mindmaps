@@ -127,9 +127,24 @@ export function createWpStore (options: WpStoreOptions): MapStore {
     },
 
     async remove (ids) {
+      // The contract is "missing ids are ignored": a map that is already gone
+      // is the state the caller asked for, and two people deleting the same
+      // map from two open lists is the ordinary way to reach a 404 here.
+      //
+      // Every id is settled before anything is thrown, so one failure cannot
+      // leave the rest of a batch undeleted. The first real failure is what
+      // surfaces — the UI branches on `MapStoreError`'s code and status, which
+      // an aggregate would hide.
+      const failures: unknown[] = []
       for (const id of ids) {
-        await request(`/maps/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        try {
+          await request(`/maps/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        } catch (error) {
+          if (error instanceof MapStoreError && error.status === 404) continue
+          failures.push(error)
+        }
       }
+      if (failures.length > 0) throw failures[0]
     }
   }
 }

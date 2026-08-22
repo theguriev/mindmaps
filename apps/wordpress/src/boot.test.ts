@@ -4,6 +4,7 @@ import {
   editingAllowed,
   intlLocale,
   parseBoot,
+  resolveCanEdit,
   resolveMapId,
   type BootConfig
 } from './boot'
@@ -82,18 +83,58 @@ describe('resolveMapId', () => {
 
   it('prefers the mount point\'s own data-map-id', () => {
     expect(resolveMapId('7', boot)).toBe('7')
+    expect(resolveMapId(' 7 ', boot)).toBe('7')
   })
 
-  it('falls back to the payload when the element has no override', () => {
+  it('reads an empty data-map-id as "show the list", not as "no opinion"', () => {
+    // `[mind_map]` on a page that also carries `[mind_map id="42"]`: the plugin
+    // prints the attribute on every mount, so an empty one is the list — the
+    // payload's pinned id must not leak into it and render map 42 twice.
+    expect(resolveMapId('', boot)).toBeUndefined()
+    expect(resolveMapId('   ', boot)).toBeUndefined()
+    expect(resolveMapId('0', boot)).toBeUndefined()
+  })
+
+  it('falls back to the payload only when the attribute is absent', () => {
+    // A page rendered by an older plugin, which printed `data-map-id` for a
+    // pinned map and nothing at all for the list.
     expect(resolveMapId(undefined, boot)).toBe('42')
     expect(resolveMapId(null, boot)).toBe('42')
-    expect(resolveMapId('', boot)).toBe('42')
-    expect(resolveMapId('0', boot)).toBe('42')
   })
 
   it('yields nothing when neither side names a map', () => {
     const listBoot = parseBoot({ root: VALID.root, canEdit: true })
     expect(resolveMapId(undefined, listBoot)).toBeUndefined()
+    expect(resolveMapId('', listBoot)).toBeUndefined()
+  })
+})
+
+describe('resolveCanEdit', () => {
+  const boot = parseBoot(VALID)
+  const readOnlyBoot = parseBoot({ ...VALID, canEdit: false })
+
+  it('prefers the mount point\'s own data-can-edit', () => {
+    // Two maps on one page: the visitor may edit one of them and not the other.
+    expect(resolveCanEdit('1', readOnlyBoot)).toBe(true)
+    expect(resolveCanEdit('0', boot)).toBe(false)
+  })
+
+  it('falls back to the payload when the attribute is absent', () => {
+    expect(resolveCanEdit(undefined, boot)).toBe(true)
+    expect(resolveCanEdit(null, boot)).toBe(true)
+    expect(resolveCanEdit(undefined, readOnlyBoot)).toBe(false)
+  })
+
+  it('fails closed on an attribute it does not recognize', () => {
+    expect(resolveCanEdit('', boot)).toBe(false)
+    expect(resolveCanEdit('yes', boot)).toBe(false)
+    expect(resolveCanEdit('2', boot)).toBe(false)
+  })
+
+  it('refuses without a nonce, which every write would need anyway', () => {
+    const noNonce = parseBoot({ ...VALID, nonce: '' })
+    expect(resolveCanEdit('1', noNonce)).toBe(false)
+    expect(resolveCanEdit(undefined, noNonce)).toBe(false)
   })
 })
 
