@@ -3,6 +3,12 @@
  */
 import type { MapDoc, MapSummary, NodeId, RawNode } from '../mindmap/types'
 import blankRaw from './blank'
+import meetingRaw from './meeting'
+import projectRaw from './project'
+import weeklyRaw from './weekly'
+import decisionRaw from './decision'
+import swotRaw from './swot'
+import notesRaw from './notes'
 import markdownRaw from './markdown'
 import emojisRaw from './emojis'
 
@@ -17,6 +23,12 @@ export interface TemplateDoc {
 }
 
 const blank = blankRaw as unknown as TemplateDoc
+const meeting = meetingRaw as unknown as TemplateDoc
+const project = projectRaw as unknown as TemplateDoc
+const weekly = weeklyRaw as unknown as TemplateDoc
+const decision = decisionRaw as unknown as TemplateDoc
+const swot = swotRaw as unknown as TemplateDoc
+const notes = notesRaw as unknown as TemplateDoc
 const markdown = markdownRaw as unknown as TemplateDoc
 const emojis = emojisRaw as unknown as TemplateDoc
 
@@ -65,7 +77,16 @@ export function blankTemplate (): TemplateDoc {
 }
 
 /** Names a built-in, so the picker can offer one without carrying it. */
-export type BuiltinTemplate = 'blank' | 'markdown' | 'emojis'
+export type BuiltinTemplate =
+  | 'blank'
+  | 'meeting'
+  | 'project'
+  | 'weekly'
+  | 'decision'
+  | 'swot'
+  | 'notes'
+  | 'markdown'
+  | 'emojis'
 
 /**
  * One entry in the "New" picker.
@@ -83,8 +104,23 @@ export interface TemplateChoice {
   description?: string
 }
 
+/**
+ * The built-ins, in the order the picker offers them.
+ *
+ * Blank first, because starting from nothing is the common case. Then the ones
+ * that are a shape to fill in — a meeting, a plan, a week, a decision — which
+ * is what a template is actually for. The two that are demonstrations of what
+ * the canvas can draw come last: they are worth seeing once and rarely the
+ * thing you meant to start from.
+ */
 const BUILTIN_BY_KEY: Record<BuiltinTemplate, TemplateDoc> = {
   blank,
+  meeting,
+  project,
+  weekly,
+  decision,
+  swot,
+  notes,
   markdown,
   emojis
 }
