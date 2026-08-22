@@ -32,6 +32,20 @@ function withIds (map: Adjacency): Array<RawNode & { id: NodeId }> {
   }))
 }
 
+/** Clear `collapsed` on `id` and every ancestor (mutates `next` in place), so
+ *  a node inserted or moved under `id` ends up visible. Cycle-guarded. */
+function unfoldChain (next: Adjacency, id: NodeId | undefined): void {
+  const seen = new Set<NodeId>()
+  let cur = id
+  while (cur !== undefined && !seen.has(cur)) {
+    seen.add(cur)
+    const node = next.get(cur)
+    if (!node) break
+    if (node.collapsed) next.set(cur, { ...node, collapsed: undefined })
+    cur = node.parent
+  }
+}
+
 /** `editing` is transient UI state — a snapshot stored in the undo/redo stacks
  *  must not carry it, or undo would silently re-open the text editor (which in
  *  turn disables the ⌘Z/⌘⇧Z shortcuts). Returns the same map when nothing set. */
@@ -82,8 +96,9 @@ export function useAdjacency (initial: Adjacency) {
       const index = children(Array.from(prev.values()), parentID).length
       const newPosition = getNewPosition(index + offsetIndex)
       const next = new Map(prev)
-      // Adding to a folded branch unfolds it — the new child must be visible.
-      if (parent.collapsed) next.set(parentID, { ...parent, collapsed: undefined })
+      // Adding to a folded branch unfolds it (and every folded ancestor) —
+      // the new child must be visible.
+      unfoldChain(next, parentID)
       next.set(id, {
         name: '',
         x: parent.x + newPosition.x,
@@ -273,11 +288,9 @@ export function useAdjacency (initial: Adjacency) {
         if (!next) next = new Map(prev)
         next.set(id, { ...node, parent: newParent })
       }
-      // Dropping into a folded branch unfolds it — the moved nodes must stay
-      // visible.
-      if (next && target.collapsed) {
-        next.set(newParent, { ...next.get(newParent)!, collapsed: undefined })
-      }
+      // Dropping into a folded branch unfolds it (ancestors included) — the
+      // moved nodes must stay visible.
+      if (next) unfoldChain(next, newParent)
       return next ?? prev
     }, false)
   }
@@ -290,11 +303,7 @@ export function useAdjacency (initial: Adjacency) {
     apply((prev) => {
       const next = new Map(prev)
       for (const n of nodes) next.set(n.id, { ...n })
-      for (const n of nodes) {
-        if (n.parent === undefined) continue
-        const parent = next.get(n.parent)
-        if (parent?.collapsed) next.set(n.parent, { ...parent, collapsed: undefined })
-      }
+      for (const n of nodes) unfoldChain(next, n.parent)
       return next
     }, true)
   }

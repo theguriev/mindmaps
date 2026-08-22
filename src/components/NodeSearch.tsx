@@ -26,6 +26,15 @@ interface NodeSearchProps {
   onJump: (id: NodeId) => void
 }
 
+/** Item values are `id::text` — the id prefix keeps values unique for
+ *  duplicate node texts, and the filter matches only the text after the first
+ *  `::`, so queries never hit id characters (a v4 UUID would otherwise match
+ *  "4", "cafe", …). Ids are uuids/numbers and never contain a colon. */
+function matchNode (value: string, search: string): number {
+  const text = value.slice(value.indexOf('::') + 2)
+  return text.toLowerCase().includes(search.toLowerCase().trim()) ? 1 : 0
+}
+
 /** ⌘F palette: fuzzy-find a node by its text (folded branches included) and
  *  jump to it. */
 export function NodeSearch ({ open, onOpenChange, list, onJump }: NodeSearchProps) {
@@ -43,6 +52,7 @@ export function NodeSearch ({ open, onOpenChange, list, onJump }: NodeSearchProp
       onOpenChange={onOpenChange}
       title="Find node"
       description="Search the map by node text"
+      filter={matchNode}
     >
       <CommandInput placeholder="Find a node…" />
       <CommandList>
@@ -50,7 +60,7 @@ export function NodeSearch ({ open, onOpenChange, list, onJump }: NodeSearchProp
         {rows.map((row) => (
           <CommandItem
             key={String(row.id)}
-            value={`${row.text} ${String(row.id)}`}
+            value={`${String(row.id)}::${row.text}`}
             onSelect={() => {
               onOpenChange(false)
               onJump(row.id)

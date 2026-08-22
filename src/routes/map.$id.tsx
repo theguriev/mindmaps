@@ -88,7 +88,13 @@ interface DragState {
   branchIds: Set<NodeId>
   lastX: number
   lastY: number
+  /** Accumulated world-space movement — drop targeting arms only after a real
+   *  drag, so a jittery selection click can never reparent. */
+  moved: number
 }
+
+/** World px of accumulated movement before a drag starts drop-targeting. */
+const REPARENT_THRESHOLD = 4
 interface PanState {
   startClientX: number
   startClientY: number
@@ -252,10 +258,27 @@ function Editor ({ id }: { id: string }) {
     { emoji: string; x: number; y: number } | null
   >(null)
 
+  // Hidden nodes (inside folded branches — e.g. re-folded by undo/redo) are
+  // inert: they may linger in the raw selection state, but every consumer works
+  // off this visible view, so keyboard/clipboard/drag can never touch them.
+  const visibleSelectedIds = (() => {
+    let dirty = false
+    for (const id of selectedIds) {
+      if (list.get(id)?.hidden) {
+        dirty = true
+        break
+      }
+    }
+    if (!dirty) return selectedIds
+    return new Set(Array.from(selectedIds).filter((id) => !list.get(id)?.hidden))
+  })()
+
   // The "active" node — target for Tab / Enter / arrow keys when several are
   // selected. Sets preserve insertion order, so it's the last one added.
   const activeId =
-    selectedIds.size > 0 ? Array.from(selectedIds)[selectedIds.size - 1] : null
+    visibleSelectedIds.size > 0
+      ? Array.from(visibleSelectedIds)[visibleSelectedIds.size - 1]
+      : null
 
   const dragRef = useRef<DragState | null>(null)
   const panRef = useRef<PanState | null>(null)
@@ -276,11 +299,15 @@ function Editor ({ id }: { id: string }) {
     }
   }
 
-  const editingNode = Array.from(list.values()).find((n) => n.editing) ?? null
+  // A hidden node can't be edited — if its branch just got re-folded (undo),
+  // the overlay must not float over empty canvas.
+  const editingNode =
+    Array.from(list.values()).find((n) => n.editing && !n.hidden) ?? null
 
   useEffect(() => {
     if (!doc) navigate({ to: '/' })
   }, [doc, navigate])
+
 
   const closeEditingIfAny = () => {
     editDirtyRef.current = false
@@ -308,8 +335,8 @@ function Editor ({ id }: { id: string }) {
     }
     // Plain press: if the node isn't part of the selection, select just it.
     // Then drag whatever is selected (each branch moves together).
-    let sel = selectedIds
-    if (!selectedIds.has(node.id)) {
+    let sel = visibleSelectedIds
+    if (!visibleSelectedIds.has(node.id)) {
       sel = new Set([node.id])
       setSelectedIds(sel)
     }
@@ -324,7 +351,8 @@ function Editor ({ id }: { id: string }) {
       ids: roots,
       branchIds,
       lastX: e.worldX,
-      lastY: e.worldY
+      lastY: e.worldY,
+      moved: 0
     }
   }
 
@@ -354,7 +382,7 @@ function Editor ({ id }: { id: string }) {
   // Clone the selected branches (fresh ids, +24/+24, same parents) and select
   // the clones. One undo step.
   const duplicateSelection = () => {
-    const roots = selectionRoots(list, selectedIds)
+    const roots = selectionRoots(list, visibleSelectedIds)
     if (roots.length === 0) return
     const clip = collectBranches(adjacency, roots)
     const { nodes, roots: newRoots } = remapForPaste(clip, {
@@ -368,18 +396,20 @@ function Editor ({ id }: { id: string }) {
   }
 
   // Fold/unfold a branch; folding drops the now-hidden descendants from the
-  // selection so keyboard actions can't target invisible nodes.
+  // selection (so keyboard actions can't target invisible nodes) and closes
+  // the text editor if it was open on one of them.
   const onToggleCollapsed = (node: MindNode) => {
-    toggleCollapsed(node.id)
     if (!node.collapsed) {
       const hiddenIds = new Set(
         branch(Array.from(list.values()), node.id).map((n) => n.id)
       )
+      if (editingNode && hiddenIds.has(editingNode.id)) closeEditingIfAny()
       setSelectedIds((prev) => {
         const next = new Set(Array.from(prev).filter((i) => !hiddenIds.has(i)))
         return next.size === prev.size ? prev : next
       })
     }
+    toggleCollapsed(node.id)
   }
 
   // Attach a sticky note to the active node (or the root) and edit it right away.
@@ -426,7 +456,7 @@ function Editor ({ id }: { id: string }) {
       startY: e.worldY,
       moved: false,
       additive: e.originalEvent.shiftKey,
-      base: e.originalEvent.shiftKey ? new Set(selectedIds) : new Set()
+      base: e.originalEvent.shiftKey ? new Set(visibleSelectedIds) : new Set()
     }
   }
 
@@ -453,10 +483,15 @@ function Editor ({ id }: { id: string }) {
         moveBranchesBy(drag.ids, dx, dy)
         drag.lastX = world.x
         drag.lastY = world.y
+        drag.moved += Math.abs(dx) + Math.abs(dy)
       }
-      // Hovering another node's box makes it the drop target: releasing there
-      // reparents the dragged branches under it (highlighted in the scene).
-      const target = dropTargetAt(list, world.x, world.y, drag.branchIds)
+      // After a real drag (not click jitter), hovering another node's box makes
+      // it the drop target: releasing there reparents the dragged branches
+      // under it (highlighted in the scene).
+      const target =
+        drag.moved > REPARENT_THRESHOLD
+          ? dropTargetAt(list, world.x, world.y, drag.branchIds)
+          : null
       setDropTargetId((prev) => (prev === target ? prev : target))
       return
     }
@@ -499,8 +534,10 @@ function Editor ({ id }: { id: string }) {
 
   const endInteractions = () => {
     // Dropping a dragged branch onto a highlighted node reparents it there.
-    // Part of the drag gesture, so it shares the drag's single undo step.
+    // Part of the drag gesture, so it shares the drag's single undo step —
+    // recordMove() guarantees that step exists even if no movement recorded.
     if (dragRef.current && dropTargetId != null) {
+      recordMove()
       reparentRoots(dragRef.current.ids, dropTargetId)
     }
     if (dropTargetId != null) setDropTargetId(null)
@@ -545,7 +582,7 @@ function Editor ({ id }: { id: string }) {
   // plus a plain-text indented outline. Returns the copied roots.
   const copySelection = (event: ClipboardEvent): NodeId[] => {
     if (editingNode || isEditableTarget(event.target)) return []
-    const roots = selectionRoots(list, selectedIds)
+    const roots = selectionRoots(list, visibleSelectedIds)
     if (roots.length === 0 || !event.clipboardData) return []
     const clip = collectBranches(adjacency, roots)
     event.clipboardData.setData(CLIPBOARD_MIME, JSON.stringify(clip))
@@ -557,10 +594,15 @@ function Editor ({ id }: { id: string }) {
   useEvent<ClipboardEvent>('copy', copySelection)
 
   useEvent<ClipboardEvent>('cut', (event) => {
-    const roots = copySelection(event)
-    const deletable = roots.filter((id) => id !== 0)
-    if (deletable.length > 0) {
-      removeMany(deletable)
+    const copied = copySelection(event)
+    if (copied.length === 0) return
+    // Like Delete: drop the primary root first so it can't mask its (deletable)
+    // descendants — ⌘A + ⌘X must cut everything except the root itself.
+    const deletable = new Set(visibleSelectedIds)
+    deletable.delete(0)
+    const roots = selectionRoots(list, deletable)
+    if (roots.length > 0) {
+      removeMany(roots)
       setSelectedIds(new Set())
     }
   })
@@ -680,6 +722,11 @@ function Editor ({ id }: { id: string }) {
     if (event.metaKey) setMetaPressing(true)
     const editing = editingNode !== null
 
+    // Keys typed into other DOM inputs (the ⌘K / ⌘F dialogs) must never reach
+    // the map shortcuts — Backspace there would delete the selection. The
+    // node textarea keeps its dedicated `editing` handling below.
+    if (!editing && isEditableTarget(event.target)) return
+
     // Space (held) → Figma-style pan mode (drag anywhere to pan).
     if (event.code === 'Space' && !editing) {
       const el = event.target as HTMLElement | null
@@ -759,7 +806,7 @@ function Editor ({ id }: { id: string }) {
       // Delete / Backspace — remove every selected node (never the root).
       // Drop the root first so it can't mask its (deletable) descendants.
       if (event.code === 'Delete' || event.code === 'Backspace') {
-        const deletable = new Set(selectedIds)
+        const deletable = new Set(visibleSelectedIds)
         deletable.delete(0)
         const roots = selectionRoots(list, deletable)
         if (roots.length > 0) {
@@ -962,7 +1009,7 @@ function Editor ({ id }: { id: string }) {
             offsetX={viewport.offsetX}
             offsetY={viewport.offsetY}
             hoveredId={hoveredId}
-            selectedIds={selectedIds}
+            selectedIds={visibleSelectedIds}
             dropTargetId={dropTargetId}
             marquee={marquee}
             metaPressing={metaPressing}

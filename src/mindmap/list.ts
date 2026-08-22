@@ -41,18 +41,37 @@ export function prepareList (adjacency: Adjacency): Map<NodeId, MindNode> {
     if (value.parent !== undefined) hasChildren.add(value.parent)
   }
 
-  // A node is hidden when any ancestor is collapsed. Memoized parent-chain walk.
+  // A node is hidden when any ancestor is collapsed. Iterative memoized walk;
+  // a `seen` set guards against corrupt (cyclic) parent data.
   const hiddenCache = new Map<NodeId, boolean>()
   const isHidden = (id: NodeId): boolean => {
     const cached = hiddenCache.get(id)
     if (cached !== undefined) return cached
-    const parentId = adjacency.get(id)?.parent
-    const parent = parentId !== undefined ? adjacency.get(parentId) : undefined
-    const hidden =
-      parentId !== undefined &&
-      parent !== undefined &&
-      (parent.collapsed === true || isHidden(parentId))
-    hiddenCache.set(id, hidden)
+    const path: NodeId[] = []
+    const seen = new Set<NodeId>()
+    let cur: NodeId = id
+    let hidden = false
+    for (;;) {
+      const known = hiddenCache.get(cur)
+      if (known !== undefined) {
+        hidden = known
+        break
+      }
+      if (seen.has(cur)) break
+      seen.add(cur)
+      path.push(cur)
+      const parentId = adjacency.get(cur)?.parent
+      const parent = parentId !== undefined ? adjacency.get(parentId) : undefined
+      if (parentId === undefined || parent === undefined) break
+      if (parent.collapsed === true) {
+        hidden = true
+        break
+      }
+      cur = parentId
+    }
+    // Every node on the walked path links to the answer through non-collapsed
+    // parents, so they all share it.
+    for (const p of path) hiddenCache.set(p, hidden)
     return hidden
   }
 

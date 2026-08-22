@@ -269,34 +269,37 @@ export function NodeScene ({
             layout={reactionLayout}
           />
         )}
+        {hovered && (
+          <plus
+            x={0}
+            y={boxH / 2 + 2}
+            radius={10}
+            color="#000000"
+            hitId={String(node.id)}
+            onPointerDown={() => {}}
+            onClick={() => onAdd(node)}
+          />
+        )}
+        {/* Fold controls live beside the plus, never on it: a double-click on
+            the badge toggles the fold twice instead of spawning a child. */}
         {node.collapsed && collapsedCount !== undefined ? (
           <FoldBadge
-            x={0}
+            x={26}
             y={boxH / 2 + 2}
             count={collapsedCount}
             hitId={String(node.id)}
             onClick={() => onToggleCollapsed(node)}
           />
         ) : (
-          hovered && (
-            <plus
-              x={0}
+          hovered &&
+          node.isHaveChildren && (
+            <FoldButton
+              x={26}
               y={boxH / 2 + 2}
-              radius={10}
-              color="#000000"
               hitId={String(node.id)}
-              onPointerDown={() => {}}
-              onClick={() => onAdd(node)}
+              onClick={() => onToggleCollapsed(node)}
             />
           )
-        )}
-        {hovered && node.isHaveChildren && !node.collapsed && (
-          <FoldButton
-            x={26}
-            y={boxH / 2 + 2}
-            hitId={String(node.id)}
-            onClick={() => onToggleCollapsed(node)}
-          />
         )}
       </group>
     )
@@ -335,37 +338,40 @@ export function NodeScene ({
           layout={reactionLayout}
         />
       )}
+      {hovered && (
+        <plus
+          x={0}
+          y={0}
+          radius={10}
+          color="#000000"
+          cross={metaPressing}
+          hitId={String(node.id)}
+          onPointerDown={() => {}}
+          onClick={(e) =>
+            e.originalEvent.metaKey ? onRemove(node.id) : onAdd(node)
+          }
+        />
+      )}
+      {/* Fold controls live beside the plus, never on it: a double-click on
+          the badge toggles the fold twice instead of spawning a child. */}
       {node.collapsed && collapsedCount !== undefined ? (
         <FoldBadge
-          x={0}
+          x={node.isRightSide ? 22 : -22}
           y={0}
           count={collapsedCount}
           hitId={String(node.id)}
           onClick={() => onToggleCollapsed(node)}
         />
       ) : (
-        hovered && (
-          <plus
-            x={0}
+        hovered &&
+        node.isHaveChildren && (
+          <FoldButton
+            x={node.isRightSide ? 22 : -22}
             y={0}
-            radius={10}
-            color="#000000"
-            cross={metaPressing}
             hitId={String(node.id)}
-            onPointerDown={() => {}}
-            onClick={(e) =>
-              e.originalEvent.metaKey ? onRemove(node.id) : onAdd(node)
-            }
+            onClick={() => onToggleCollapsed(node)}
           />
         )
-      )}
-      {hovered && node.isHaveChildren && !node.collapsed && (
-        <FoldButton
-          x={node.isRightSide ? 18 : -18}
-          y={0}
-          hitId={String(node.id)}
-          onClick={() => onToggleCollapsed(node)}
-        />
       )}
     </group>
   )

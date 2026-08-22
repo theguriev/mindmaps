@@ -22,15 +22,17 @@ export const STICKY_FONT =
 /** Node markdown soft-wraps at this width unless the node was deliberately
  *  resized (then its own width wins). */
 export const DEFAULT_WRAP_WIDTH = 480
-/** `prepareList`'s default node width. Editing persists it verbatim, so a node
- *  carrying exactly this value has never been resized on purpose. */
-const NODE_DEFAULT_W = 140
+/** The edit overlay's textarea never renders narrower than its 300px CSS
+ *  floor, so persisted widths below it were never visible to the user (the
+ *  140px default that editing writes back included) — treat them as
+ *  "never resized" instead of as sub-300px wrap columns. */
+const EXPLICIT_MIN_W = 300
 const MIN_WRAP_WIDTH = 80
 
 /** The width a node's markdown wraps at. */
 export function wrapWidthFor (node: MindNode): number {
   if (node.sticky) return Math.max(MIN_WRAP_WIDTH, node.width - STICKY_PAD * 2)
-  const base = node.width !== NODE_DEFAULT_W ? node.width : DEFAULT_WRAP_WIDTH
+  const base = node.width >= EXPLICIT_MIN_W ? node.width : DEFAULT_WRAP_WIDTH
   if (node.component === 'root') {
     return Math.max(MIN_WRAP_WIDTH, base - ROOT_PAD_X * 2)
   }

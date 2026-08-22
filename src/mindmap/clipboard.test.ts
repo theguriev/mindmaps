@@ -63,6 +63,78 @@ describe('parseClipboard', () => {
     }
     expect(parseClipboard(JSON.stringify(dangling))).toBeNull()
   })
+
+  it('rejects cyclic parent graphs (they would crash parent-chain walks)', () => {
+    const cyclic = {
+      type: 'mind-maps/branches',
+      version: 1,
+      roots: ['a'],
+      nodes: [
+        { id: 'a', name: 'A', x: 0, y: 0 },
+        { id: 'b', name: 'B', x: 0, y: 0, parent: 'c' },
+        { id: 'c', name: 'C', x: 0, y: 0, parent: 'b' }
+      ]
+    }
+    expect(parseClipboard(JSON.stringify(cyclic))).toBeNull()
+    const selfParented = {
+      ...cyclic,
+      nodes: [
+        { id: 'a', name: 'A', x: 0, y: 0 },
+        { id: 'b', name: 'B', x: 0, y: 0, parent: 'b' }
+      ]
+    }
+    expect(parseClipboard(JSON.stringify(selfParented))).toBeNull()
+  })
+
+  it('rejects non-finite coordinates and duplicate ids', () => {
+    const base = { type: 'mind-maps/branches', version: 1, roots: ['a'] }
+    expect(
+      parseClipboard(
+        JSON.stringify({ ...base, nodes: [{ id: 'a', name: 'A', x: 0, y: 0 }] })
+          .replace('"x":0', '"x":1e999')
+      )
+    ).toBeNull()
+    expect(
+      parseClipboard(
+        JSON.stringify({
+          ...base,
+          nodes: [
+            { id: 'a', name: 'A', x: 0, y: 0 },
+            { id: 'a', name: 'A again', x: 1, y: 1 }
+          ]
+        })
+      )
+    ).toBeNull()
+  })
+
+  it('strips unknown and ill-typed optional fields', () => {
+    const messy = {
+      type: 'mind-maps/branches',
+      version: 1,
+      roots: ['a'],
+      nodes: [
+        {
+          id: 'a',
+          name: 'A',
+          x: 0,
+          y: 0,
+          width: 'wide',
+          lineStyle: 'wavy',
+          component: 'root',
+          editing: true,
+          strokeWidth: 3
+        }
+      ]
+    }
+    const clip = parseClipboard(JSON.stringify(messy))
+    expect(clip?.nodes[0]).toEqual({
+      id: 'a',
+      name: 'A',
+      x: 0,
+      y: 0,
+      strokeWidth: 3
+    })
+  })
 })
 
 describe('remapForPaste', () => {

@@ -84,7 +84,29 @@ export function outlineText (clip: BranchClipboard): string {
   return lines.join('\n')
 }
 
-/** Parse pasted JSON into a payload, or null when it isn't (a valid) one. */
+/** Copy an optional field when its runtime type is what the model expects. */
+function pick (
+  out: RawNode & { id: NodeId },
+  n: Record<string, unknown>
+): void {
+  if (typeof n.stroke === 'string') out.stroke = n.stroke
+  if (typeof n.strokeWidth === 'number' && Number.isFinite(n.strokeWidth)) {
+    out.strokeWidth = n.strokeWidth
+  }
+  if (n.lineStyle === 'solid' || n.lineStyle === 'dashed') out.lineStyle = n.lineStyle
+  if (n.lineShape === 'straight' || n.lineShape === 'smooth') out.lineShape = n.lineShape
+  if (typeof n.width === 'number' && Number.isFinite(n.width)) out.width = n.width
+  if (typeof n.height === 'number' && Number.isFinite(n.height)) out.height = n.height
+  if (n.sticky === true) out.sticky = true
+  if (n.collapsed === true) out.collapsed = true
+  if (typeof n.reaction === 'string') out.reaction = n.reaction
+}
+
+/** Parse pasted JSON into a payload, or null when it isn't (a valid) one.
+ *  The clipboard is an open ingress (any page can write the custom MIME type),
+ *  so this validates hard: finite coordinates, unique ids, a whitelist of
+ *  optional fields, and an acyclic parent forest — a cycle would send the
+ *  editor's parent-chain walks into infinite recursion. */
 export function parseClipboard (json: string): BranchClipboard | null {
   let data: unknown
   try {
@@ -96,25 +118,50 @@ export function parseClipboard (json: string): BranchClipboard | null {
   const clip = data as BranchClipboard
   if (clip.type !== 'mind-maps/branches' || clip.version !== 1) return null
   if (!Array.isArray(clip.roots) || !Array.isArray(clip.nodes)) return null
+  if (clip.roots.length === 0) return null
+
   const ids = new Set<NodeId>()
+  const nodes: Array<RawNode & { id: NodeId }> = []
   for (const n of clip.nodes) {
     if (typeof n !== 'object' || n === null) return null
     if (typeof n.id !== 'string' && typeof n.id !== 'number') return null
     if (typeof n.name !== 'string') return null
-    if (typeof n.x !== 'number' || typeof n.y !== 'number') return null
+    if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) return null
+    if (ids.has(n.id)) return null
     ids.add(n.id)
+    const out: RawNode & { id: NodeId } = { id: n.id, name: n.name, x: n.x, y: n.y }
+    if (n.parent !== undefined) {
+      if (typeof n.parent !== 'string' && typeof n.parent !== 'number') return null
+      out.parent = n.parent
+    }
+    pick(out, n as unknown as Record<string, unknown>)
+    nodes.push(out)
   }
-  if (clip.roots.length === 0) return null
+
   const rootSet = new Set(clip.roots)
   for (const rootId of clip.roots) {
     if (!ids.has(rootId)) return null
   }
   // Non-root nodes must attach to something inside the payload.
-  for (const n of clip.nodes) {
+  for (const n of nodes) {
     if (rootSet.has(n.id)) continue
     if (n.parent === undefined || !ids.has(n.parent)) return null
   }
-  return clip
+  // The parent graph must be a forest — reject any cycle.
+  const parentOf = new Map<NodeId, NodeId | undefined>(
+    nodes.map((n) => [n.id, n.parent])
+  )
+  for (const n of nodes) {
+    const seen = new Set<NodeId>()
+    let cur: NodeId | undefined = n.id
+    while (cur !== undefined) {
+      if (seen.has(cur)) return null
+      seen.add(cur)
+      cur = parentOf.get(cur)
+    }
+  }
+
+  return { type: 'mind-maps/branches', version: 1, roots: [...clip.roots], nodes }
 }
 
 export interface PasteResult {
