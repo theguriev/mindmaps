@@ -19,6 +19,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Rest;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Document;
 use MindMaps\Repository;
 use WP_Error;
@@ -105,9 +107,9 @@ function register_routes(): void {
 	);
 }
 
-/* -------------------------------------------------------------------------
- * Errors — stable codes the client branches on.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Errors — stable codes the client branches on.
+// --------------------------------------------------------------------------
 
 /**
  * 400: the payload is not a valid document.
@@ -142,9 +144,9 @@ function error_not_found(): WP_Error {
 	);
 }
 
-/* -------------------------------------------------------------------------
- * Permissions — real capabilities, never `__return_true`.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Permissions — real capabilities, never `__return_true`.
+// --------------------------------------------------------------------------
 
 /**
  * True when the current user may see someone else's maps.
@@ -251,9 +253,9 @@ function can_delete_map( WP_REST_Request $request ): bool|WP_Error {
 	return \current_user_can( 'delete_post', $id ) ? true : error_forbidden();
 }
 
-/* -------------------------------------------------------------------------
- * Handlers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Handlers.
+// --------------------------------------------------------------------------
 
 /**
  * GET /maps.
@@ -379,9 +381,9 @@ function handle_delete( WP_REST_Request $request ) {
 	);
 }
 
-/* -------------------------------------------------------------------------
- * Small shared helpers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Small shared helpers.
+// --------------------------------------------------------------------------
 
 /**
  * The request body, decoded the way the validator needs to see it.

@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Repository;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Document;
 use MindMaps\PostType;
 use WP_Error;

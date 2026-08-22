@@ -1,8 +1,8 @@
 === Mind Maps ===
-Contributors: eugenguriev
+Contributors: gurievcreative
 Tags: mind map, diagram, canvas, block, shortcode
 Requires at least: 6.3
-Tested up to: 6.7
+Tested up to: 7.1
 Requires PHP: 8.1
 Stable tag: 1.1.0
 License: GPLv2 or later
@@ -28,22 +28,37 @@ block:
     [mind_map id="42" height="600"]
 
 The block is called *Mind Map* and renders through the same code path, so both
-produce an identical mount point.
+produce an identical mount point. Both can hand a reader the map on its own,
+with no title, buttons or zoom over it — the block has a **Show controls**
+toggle, the shortcode takes `controls="0"` — and a map shown that way arrives
+already framed on the whole diagram instead of at full size on its middle.
 
-**Permissions.** Reading a map requires `read` plus ownership (or
-`edit_others_posts`). Creating requires `edit_posts`; updating and deleting
-require `edit_post` / `delete_post` for that specific map. Nothing is public by
-default — an embedded map is only visible to a visitor who may read it.
+**Permissions.** A **published** map can be read by anyone, signed in or not —
+that is what makes embedding one in a post worth doing, since most of the
+people reading a post are not signed in. Reading is all that grants: creating a
+map requires `edit_posts`, and updating or deleting one requires `edit_post` /
+`delete_post` for that specific map, re-checked on the server for every write.
+
+Maps that are **not** published — a contributor's draft, a private or pending
+map — stay with their author, and with editors and administrators. The map list
+is never public: `GET /maps` refuses a signed-out caller outright, so a
+visitor cannot enumerate a site's maps.
+
+Worth knowing before you write anything sensitive in one: a published map is
+readable by anyone who knows its post id, whether or not you have embedded it
+anywhere. If that is not what you want for a particular map, keep it out of
+this plugin.
 
 = REST API =
 
-Namespace `mindmaps/v1`, authenticated with cookies plus the standard
-`X-WP-Nonce` header.
+Namespace `mindmaps/v1`. Writes are authenticated with cookies plus the
+standard `X-WP-Nonce` header; reading a published map needs neither.
 
 * `GET /maps` — every map the caller may see, newest first, capped at 100
 * `POST /maps` — create a map
 * `GET /maps/<id>` — read one map
 * `PUT /maps/<id>` — overwrite one map
+* `PUT /maps/<id>/template` — mark a map as a template, or stop
 * `DELETE /maps/<id>` — delete one map
 
 Errors carry a stable code: `mindmap_invalid_document` (400),
@@ -67,8 +82,11 @@ JSON in the `_mindmap_content` post meta, alongside `_mindmap_version` and
 
 = Can visitors edit an embedded map? =
 
-Only if they may edit that map. The boot payload tells the front end whether
-the current viewer has write access, and every write is re-checked server-side.
+No. A signed-out visitor gets the map read-only: it can be panned, zoomed,
+folded and exported, and nothing they do reaches the server. The same applies
+to any signed-in user without `edit_post` on that map. The boot payload tells
+the front end which of the two it is, and every write is re-checked on the
+server regardless of what the front end believed.
 
 = Does it expose the maps through the core REST API? =
 
@@ -81,6 +99,49 @@ plugin's document validation.
 It degrades to an empty document instead of breaking the screen. Content that
 fails validation — non-finite coordinates, duplicate node ids, cyclic parent
 chains — is never returned to the editor.
+
+= What happens to my maps if I delete the plugin? =
+
+They stay. Maps are your content, stored as ordinary `mind_map` posts, and
+deleting or deactivating the plugin leaves them in the database untouched —
+reactivating brings all of them back exactly as they were.
+
+If you want them gone, delete them in the Mind Maps screen **before** removing
+the plugin; once it is gone there is no screen that lists them. To keep a copy,
+Tools → Export offers "Mind Maps" as an export type.
+
+Note that deleting a *user* does delete their maps, the same way WordPress
+deletes other content belonging to a removed user.
+
+== Source Code ==
+
+This plugin ships built JavaScript and CSS. The unminified source, and the
+tools that build it, are public:
+
+* Repository: https://github.com/theguriev/mindmaps
+* Each release is built from the tag of the same version as `Stable tag`.
+
+Where the shipped files come from:
+
+* `assets/index.js` ← `apps/wordpress/src/main.tsx` (with `packages/engine`
+  and `packages/storage`), built by `apps/wordpress/vite.config.ts`
+* `assets/block.js` ← `apps/wordpress/src/block.ts`, built by
+  `apps/wordpress/vite.block.config.ts` — a second, separate Vite build
+* `assets/index.css` ← `apps/wordpress/src/index.css` (Tailwind)
+
+To build it yourself you need Node 22 or newer and pnpm:
+
+    git clone https://github.com/theguriev/mindmaps
+    cd mindmaps
+    pnpm install
+    pnpm wp:package
+
+That writes `services/wordpress/dist/mind-maps.zip`, which is this plugin. The
+long form, if you would rather see the steps:
+
+    pnpm install
+    pnpm build
+    pnpm --filter @mindmaps/wordpress run package
 
 == Screenshots ==
 

@@ -16,6 +16,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Assets;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Render;
 use MindMaps\Rest;
 
@@ -25,9 +27,9 @@ const SCRIPT_HANDLE = 'mind-maps-app';
 /** Style handle prefix for the bundle's stylesheets. */
 const STYLE_HANDLE = 'mind-maps-app';
 
-/* -------------------------------------------------------------------------
- * Pure helpers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Pure helpers.
+// --------------------------------------------------------------------------
 
 /**
  * Pick the entry files out of a build manifest.
@@ -166,9 +168,9 @@ function holds_boot_script( mixed $lines ): bool {
 	return false;
 }
 
-/* -------------------------------------------------------------------------
- * WordPress shell.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// WordPress shell.
+// --------------------------------------------------------------------------
 
 /**
  * Absolute path of the plugin's `assets/` directory.

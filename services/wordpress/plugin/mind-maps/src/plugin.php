@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Plugin;
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Register every hook the plugin uses.
  */
@@ -20,7 +22,6 @@ function bootstrap(): void {
 	\add_action( 'init', 'MindMaps\\PostType\\register' );
 	\add_action( 'init', 'MindMaps\\Render\\register_shortcode' );
 	\add_action( 'init', 'MindMaps\\Render\\register_block' );
-	\add_action( 'init', __NAMESPACE__ . '\\load_textdomain' );
 
 	\add_action( 'rest_api_init', 'MindMaps\\Rest\\register_routes' );
 
@@ -36,16 +37,12 @@ function bootstrap(): void {
 	\add_action( 'admin_bar_menu', 'MindMaps\\Admin\\register_admin_bar', 80 );
 }
 
-/**
- * Load translations.
+/*
+ * Translations are not loaded here.
+ *
+ * `load_plugin_textdomain()` has been unnecessary for a plugin hosted on
+ * wordpress.org since WordPress 4.6: core loads the translations for the
+ * plugin's own slug on its own, at the right moment, and calling it by hand
+ * only risks loading them too early. The plugin ships no translations of its
+ * own, which is also why the header carries no `Domain Path`.
  */
-function load_textdomain(): void {
-	if ( ! \defined( 'MIND_MAPS_FILE' ) ) {
-		return;
-	}
-	\load_plugin_textdomain(
-		'mind-maps',
-		false,
-		\dirname( \plugin_basename( \MIND_MAPS_FILE ) ) . '/languages'
-	);
-}

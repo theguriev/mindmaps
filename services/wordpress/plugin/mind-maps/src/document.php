@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Document;
 
+defined( 'ABSPATH' ) || exit;
+
 /** Schema version stamped on every document this build writes. */
 const DOC_VERSION = 1;
 
