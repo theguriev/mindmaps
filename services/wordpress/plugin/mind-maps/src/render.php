@@ -63,8 +63,14 @@ function normalize_args( mixed $raw_id, mixed $raw_height ): array {
  *   twice.
  * - `data-can-edit` is `"1"` or `"0"`, resolved per mount, so a read-only embed
  *   of someone else's map next to an editable one gets the right answer.
+ * - `data-map-param` is present only when the mount owns its page's URL — the
+ *   admin screen — and names the query parameter the open map lives in, so the
+ *   address identifies the map the way `post.php?post=1` identifies a post. A
+ *   shortcode must never rewrite the URL of the post it sits in, so it emits
+ *   no such attribute.
  *
- * @param array<string, mixed> $args `id` and `height`, plus optional `class`.
+ * @param array<string, mixed> $args `id` and `height`, plus optional `class`
+ *                                   and `map_param`.
  */
 function mount_markup( array $args ): string {
 	$normalized = normalize_args( $args['id'] ?? 0, $args['height'] ?? 0 );
@@ -78,12 +84,23 @@ function mount_markup( array $args ): string {
 		$classes .= ' ' . $args['class'];
 	}
 
+	$map_param = \is_string( $args['map_param'] ?? null ) && '' !== $args['map_param']
+		? $args['map_param']
+		: null;
+
+	// An explicit `null` height means "no inline style": the caller sizes the
+	// container from a stylesheet. An inline `min-height` would otherwise win
+	// over every rule a stylesheet can write, and the admin screen needs the
+	// container to shrink with the viewport.
+	$sized = ! \array_key_exists( 'height', $args ) || null !== $args['height'];
+
 	$attributes = \sprintf(
-		'class="%s" data-mind-maps-root="1" style="min-height:%dpx" data-map-id="%s" data-can-edit="%s"',
+		'class="%s" data-mind-maps-root="1"%s data-map-id="%s" data-can-edit="%s"%s',
 		\esc_attr( $classes ),
-		\absint( $normalized['height'] ),
+		$sized ? \sprintf( ' style="min-height:%dpx"', \absint( $normalized['height'] ) ) : '',
 		\esc_attr( $map_id ?? '' ),
-		Assets\default_can_edit( $map_id ) ? '1' : '0'
+		Assets\default_can_edit( $map_id ) ? '1' : '0',
+		null === $map_param ? '' : \sprintf( ' data-map-param="%s"', \esc_attr( $map_param ) )
 	);
 
 	return \sprintf(

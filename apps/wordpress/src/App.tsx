@@ -18,7 +18,13 @@ import {
 // up as a single file (WordPress enqueues one script).
 import { MindMapEditor } from '@mindmaps/engine/editor'
 import { createWpStore, type MapStore } from '@mindmaps/storage'
-import { editingAllowed, intlLocale, type BootConfig } from './boot'
+import {
+  editingAllowed,
+  intlLocale,
+  mapIdFromUrl,
+  mapUrl,
+  type BootConfig
+} from './boot'
 import { describeStoreError } from './errors'
 
 /** Where an async load is, so loading and failure are always drawn. */
@@ -360,9 +366,14 @@ function MapList ({
 }
 
 /**
- * The embed's two states. There is no router on a WordPress page — the URL
- * belongs to the post — so which map is open is component state, seeded from
- * the mount point's `data-map-id` (or the boot payload's `mapId`).
+ * The embed's two states, and which of them the URL is allowed to name.
+ *
+ * A mount inside somebody else's post owns no URL — that address belongs to the
+ * post — so the open map is component state, seeded from `data-map-id`. The
+ * admin screen is the opposite: it *is* the page, so it passes `mapParam` and
+ * the open map lives in that query parameter, exactly as `post.php?post=1`
+ * names a post. Reloading, sharing the link and the browser's back button then
+ * all land where the address says.
  *
  * `canEdit` arrives per mount too (`main.tsx` resolves it from the mount
  * point's `data-can-edit`): one page can carry a map the visitor owns next to
@@ -371,11 +382,13 @@ function MapList ({
 export function App ({
   boot,
   mapId,
-  canEdit
+  canEdit,
+  mapParam
 }: {
   boot: BootConfig
   mapId?: string
   canEdit?: boolean
+  mapParam?: string
 }) {
   const store = useMemo(
     () => createWpStore({ root: boot.root, nonce: boot.nonce }),
@@ -384,9 +397,32 @@ export function App ({
   const mayEdit = canEdit ?? editingAllowed(boot)
   const locale = intlLocale(boot)
 
-  // A pinned map is the whole embed: there is no list behind it to go back to.
-  const pinned = mapId !== undefined
   const [openId, setOpenId] = useState<string | undefined>(mapId)
+
+  // Routed mounts always have a list to go back to; a pinned embed does not.
+  const routed = mapParam !== undefined
+  const pinned = !routed && mapId !== undefined
+
+  // The address bar and the open map are one thing seen twice: `show` writes
+  // the map into the URL, and Back/Forward write it back into state.
+  const show = (next: string | undefined) => {
+    setOpenId(next)
+    if (!routed) return
+    window.history.pushState(
+      { mindMaps: next ?? null },
+      '',
+      mapUrl(window.location.href, mapParam, next)
+    )
+  }
+
+  useEffect(() => {
+    if (!routed) return
+    const onPopState = () => {
+      setOpenId(mapIdFromUrl(window.location.href, mapParam))
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [routed, mapParam])
 
   if (openId !== undefined) {
     return (
@@ -394,12 +430,12 @@ export function App ({
         store={store}
         id={openId}
         canEdit={mayEdit}
-        onBack={pinned ? undefined : () => setOpenId(undefined)}
+        onBack={pinned ? undefined : () => show(undefined)}
       />
     )
   }
 
   return (
-    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={setOpenId} />
+    <MapList store={store} canEdit={mayEdit} locale={locale} onOpen={show} />
   )
 }

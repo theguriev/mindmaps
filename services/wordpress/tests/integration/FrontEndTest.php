@@ -261,4 +261,94 @@ final class FrontEndTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'data-map-id=""', Render\block_callback( array() ) );
 	}
+
+	/* ---------------------------------------------------------------------
+	 * The admin screen owns its URL and its canvas.
+	 * ------------------------------------------------------------------ */
+
+	public function test_only_the_admin_mount_claims_the_page_url(): void {
+		\wp_set_current_user( $this->author );
+
+		// A shortcode sits inside somebody's post and must never rewrite that
+		// post's address, so it names no parameter.
+		$this->assertStringNotContainsString( 'data-map-param', \do_shortcode( '[mind_map]' ) );
+		$this->assertStringNotContainsString(
+			'data-map-param',
+			Render\block_callback( array( 'id' => $this->map_post( $this->author ) ) )
+		);
+
+		// The admin screen is the page: the open map belongs in its URL, as
+		// `post.php?post=1` names a post, so a reload comes back to it.
+		$this->assertStringContainsString(
+			'data-map-param="map"',
+			Render\mount_markup( array(
+				'id'        => 0,
+				'map_param' => 'map',
+			) )
+		);
+	}
+
+	public function test_a_mount_can_opt_out_of_the_inline_height(): void {
+		\wp_set_current_user( $this->author );
+
+		// An inline `min-height` outranks every stylesheet rule, so the admin
+		// canvas — sized against the viewport — has to be able to drop it.
+		$this->assertStringNotContainsString(
+			'style=',
+			Render\mount_markup( array(
+				'id'     => 0,
+				'height' => null,
+			) )
+		);
+
+		// Every other caller keeps the inline height it always had.
+		$this->assertStringContainsString(
+			'style="min-height:600px"',
+			Render\mount_markup( array( 'id' => 0 ) )
+		);
+	}
+
+	public function test_the_admin_screen_renders_a_full_bleed_canvas(): void {
+		\wp_set_current_user( $this->admin_user() );
+		$_GET = array( 'page' => 'mind-maps' );
+
+		\ob_start();
+		Admin\render_page();
+		$rendered = (string) \ob_get_clean();
+		$_GET     = array();
+
+		// `.wrap` carries WordPress' document margins — half the grey this
+		// screen removes — and is where `common.js` moves admin notices to,
+		// which would drop them between the heading and the canvas.
+		$this->assertStringNotContainsString( 'class="wrap', $rendered );
+		// The marker core prefers for notices, so they land in the strip above
+		// the map rather than nowhere.
+		$this->assertStringContainsString( 'class="wp-header-end"', $rendered );
+		$this->assertStringContainsString( 'mind-maps-admin-root', $rendered );
+		$this->assertStringContainsString( 'data-map-param="map"', $rendered );
+		$this->assertStringNotContainsString( 'style=', $rendered );
+	}
+
+	public function test_the_admin_screen_opens_the_map_its_url_names(): void {
+		$map_id = $this->map_post( $this->author, 'Routed' );
+
+		\wp_set_current_user( $this->author );
+		$_GET = array(
+			'page' => 'mind-maps',
+			'map'  => (string) $map_id,
+		);
+
+		\ob_start();
+		Admin\render_page();
+		$rendered = (string) \ob_get_clean();
+		$_GET     = array();
+
+		// Reloading `?map=<id>` must land on that map, not back on the list.
+		$this->assertStringContainsString( 'data-map-id="' . $map_id . '"', $rendered );
+	}
+
+	/** An administrator id, created on demand. */
+	private function admin_user(): int {
+		return self::factory()->user->create( array( 'role' => 'administrator' ) );
+	}
 }

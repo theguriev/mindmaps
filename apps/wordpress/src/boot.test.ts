@@ -3,9 +3,12 @@ import {
   BootError,
   editingAllowed,
   intlLocale,
+  mapIdFromUrl,
+  mapUrl,
   parseBoot,
   resolveCanEdit,
   resolveMapId,
+  resolveMapParam,
   type BootConfig
 } from './boot'
 
@@ -171,5 +174,63 @@ describe('intlLocale', () => {
 
   it('is undefined when the payload has no locale, so Intl uses the browser\'s', () => {
     expect(intlLocale(parseBoot({ root: VALID.root }))).toBeUndefined()
+  })
+})
+
+describe('resolveMapParam', () => {
+  it('names the parameter only for a mount that owns its URL', () => {
+    // The admin screen states one; a shortcode inside somebody's post does not,
+    // and must never rewrite that post's address.
+    expect(resolveMapParam('map')).toBe('map')
+    expect(resolveMapParam(undefined)).toBeUndefined()
+    expect(resolveMapParam(null)).toBeUndefined()
+    expect(resolveMapParam('  ')).toBeUndefined()
+  })
+})
+
+describe('mapUrl', () => {
+  const ADMIN = 'http://site.test/wp-admin/admin.php?page=mind-maps'
+
+  it('writes the open map into the parameter, keeping the rest of the address', () => {
+    // `page=mind-maps` is what makes it *this* screen — only the map may move.
+    expect(mapUrl(ADMIN, 'map', '42')).toBe('/wp-admin/admin.php?page=mind-maps&map=42')
+  })
+
+  it('replaces a map already in the address rather than appending', () => {
+    expect(mapUrl(`${ADMIN}&map=7`, 'map', '42')).toBe(
+      '/wp-admin/admin.php?page=mind-maps&map=42'
+    )
+  })
+
+  it('drops the parameter for the list', () => {
+    expect(mapUrl(`${ADMIN}&map=7`, 'map', undefined)).toBe(
+      '/wp-admin/admin.php?page=mind-maps'
+    )
+  })
+
+  it('returns a relative URL and keeps any fragment', () => {
+    // `history.pushState` wants a relative URL, and the placeholder origin the
+    // parser needs must never reach the address bar.
+    const result = mapUrl('/wp-admin/admin.php?page=mind-maps#top', 'map', '42')
+    expect(result).toBe('/wp-admin/admin.php?page=mind-maps&map=42#top')
+    expect(result).not.toContain('invalid')
+  })
+})
+
+describe('mapIdFromUrl', () => {
+  it('reads the map the address points at', () => {
+    expect(mapIdFromUrl('/wp-admin/admin.php?page=mind-maps&map=42', 'map')).toBe('42')
+  })
+
+  it('reads the list as no map', () => {
+    expect(mapIdFromUrl('/wp-admin/admin.php?page=mind-maps', 'map')).toBeUndefined()
+    // A leftover empty or zero parameter is the list too, not map "0".
+    expect(mapIdFromUrl('/wp-admin/admin.php?map=', 'map')).toBeUndefined()
+    expect(mapIdFromUrl('/wp-admin/admin.php?map=0', 'map')).toBeUndefined()
+  })
+
+  it('round-trips with mapUrl', () => {
+    const url = mapUrl('/wp-admin/admin.php?page=mind-maps', 'map', '13')
+    expect(mapIdFromUrl(url, 'map')).toBe('13')
   })
 })
