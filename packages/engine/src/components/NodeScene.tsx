@@ -90,7 +90,22 @@ function FoldBadge ({
   )
 }
 
-/** Hover affordance for folding an expanded branch: a small "−" disc. */
+/**
+ * Hover affordance for folding an expanded branch: a chevron pointing up into
+ * the node.
+ *
+ * It used to be a "−", sitting beside the "+" that adds a child and reading as
+ * its opposite — remove this node. That reading was not even far-fetched:
+ * ⌘-hovering turns the "+" into a "×" that does exactly that. Nothing about a
+ * minus says the branch would still be there, folded away.
+ *
+ * A chevron says it, and it says it in sixteen pixels. The obvious alternative
+ * — the two chevrons closing on each other that mean "collapse" in every
+ * toolbar, including our own command palette — does not survive this size:
+ * drawn as filled wedges inside a 16px disc their tips meet in the middle and
+ * the whole thing reads as an ×, which is the one shape it must not resemble.
+ * One arrow, pointing at the node it folds into, stays legible down to 1×.
+ */
 function FoldButton ({
   x,
   y,
@@ -114,7 +129,19 @@ function FoldButton ({
         onPointerDown={() => {}}
         onClick={onClick}
       />
-      <box x={-4} y={-1} width={8} height={2} fill="#000000" />
+      {/* A chevron is a triangle with a notch cut into its base, aimed by
+          rotation: −90° puts the apex up. Its wings sit on its own origin and
+          the apex reaches `size / 2` past it, so the origin sits low to leave
+          the whole mark centred in the disc. */}
+      <triangle
+        x={0}
+        y={2.5}
+        size={11}
+        notch={0.6}
+        pointRight
+        rotation={-Math.PI / 2}
+        fill="#000000"
+      />
     </group>
   )
 }
