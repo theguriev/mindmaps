@@ -1,0 +1,91 @@
+/* Engine theme + Tailwind, plus this app's own sources for class detection. */
+@import '@mindmaps/engine/styles.css';
+
+@source './';
+
+/* ---------------------------------------------------------------------------
+   Defensive scoping.
+
+   The editor app owns its document; this bundle does not. Its CSS is enqueued
+   into somebody else's WordPress page, next to a theme and any number of other
+   plugins, so it must not act like the only stylesheet on the page.
+
+   Two halves to that:
+
+   1. Nothing below styles a bare element selector. Every rule this app adds is
+      either a Tailwind utility on its own markup or lives under
+      `.mind-maps-app`, the class `main.tsx` puts on each mount container.
+
+   2. The engine's stylesheet *does* style the document — it is written for the
+      standalone SPA, where sizing `html`/`body` and painting them is correct.
+      Those rules land in the `base` cascade layer, so the block below (same
+      layer, later, equal specificity) wins and hands each property back with
+      `revert-layer`: the theme's own value applies, or the browser default if
+      the theme has no opinion. Reverting rather than re-declaring matters —
+      we do not know what the host page wanted, only that it was not ours.
+   --------------------------------------------------------------------------- */
+@layer base {
+  html,
+  body {
+    height: revert-layer;
+  }
+
+  body {
+    background-color: revert-layer;
+    color: revert-layer;
+    font-family: revert-layer;
+  }
+
+  /* The SPA's mount node. Nothing on a WordPress page should be positioned
+     because this bundle loaded. */
+  #mmb {
+    position: revert-layer;
+    inset: revert-layer;
+    height: revert-layer;
+  }
+
+  /* Selection colour is a page-wide decision the host already made. */
+  *::selection {
+    background-color: revert-layer;
+    color: revert-layer;
+  }
+}
+
+/* The mount container. Since `body` no longer carries the engine's colours and
+   font, the embed paints its own box instead — otherwise it would inherit the
+   theme's typography into a UI that was designed against these tokens. */
+.mind-maps-app {
+  position: relative;
+  /* A fresh stacking context: the editor's toolbars and popovers stack among
+     themselves without competing with a sticky theme header. */
+  isolation: isolate;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* The plugin sets the height (the shortcode's `height` attribute); this is the
+   floor for when it does not, so a mount point is never a zero-pixel sliver.
+   The editor is absolutely positioned inside this box, and the map list
+   scrolls within it. */
+.mind-maps-app {
+  min-height: 420px;
+}
+
+/* Radix renders popovers, dropdowns, the ⌘K palette and the search dialog into
+   a portal on `body` — outside the container above, so they inherit the
+   theme's font instead of ours, and their `z-50` sits under the sticky headers
+   themes like to park at 9999. These selectors match the engine's own markup
+   (its `data-slot` attributes), not page elements. */
+[data-slot='popover-content'],
+[data-slot='dropdown-menu-content'],
+[data-slot='dialog-content'],
+[data-slot='dialog-overlay'] {
+  font-family: var(--font-sans);
+  z-index: 100000;
+}

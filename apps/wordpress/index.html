@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mind maps — WordPress embed harness</title>
+    <style>
+      /* Deliberately opinionated page styling: this stands in for a WordPress
+         theme, so anything the bundle leaks into the page shows up here. */
+      body {
+        margin: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: #2b2b2b;
+        background: #faf7f2;
+      }
+      .harness-page {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+      }
+      .harness-note {
+        border-left: 3px solid #c9c2b6;
+        padding-left: 0.75rem;
+        font-size: 0.9rem;
+        color: #6b6459;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="harness-page">
+      <h1>A theme's heading</h1>
+      <p class="harness-note">
+        Everything outside the boxes below is "the theme". If the bundle's CSS
+        escapes its mount container, this text is where it shows.
+      </p>
+
+      <!--
+        The mount point the shortcode / block render_callback emits. `data-map-id`
+        is what pins one embed to one map; drop the attribute to get the list.
+      -->
+      <h2>Embedded map</h2>
+      <div data-mind-maps-root data-map-id="1" style="height: 600px"></div>
+
+      <h2>Embedded map list</h2>
+      <div data-mind-maps-root style="height: 480px"></div>
+
+      <p class="harness-note">Still the theme, after both embeds.</p>
+    </div>
+
+    <script>
+      // Stands in for the JSON the plugin prints with wp_add_inline_script.
+      // `root` is relative so Vite's dev proxy forwards it to a local wp-env;
+      // paste a real `wp_create_nonce('wp_rest')` value here to write.
+      window.mindMapsBoot = {
+        root: '/wp-json/mindmaps/v1',
+        nonce: 'dev-nonce',
+        canEdit: true,
+        locale: 'en_US'
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
