@@ -1,7 +1,10 @@
 /**
  * Lays out parsed markdown into absolutely-positioned runs + decorations,
- * measured against a Canvas 2D context. No soft wrapping (nodes are nowrap):
- * width is the widest line, height is the stacked line heights.
+ * measured against a Canvas 2D context. By default there is no soft wrapping
+ * (nodes are nowrap): width is the widest line, height is the stacked line
+ * heights. Passing `maxWidth` opts into greedy word-wrapping of paragraphs,
+ * headings, blockquotes and list items; code blocks, tables and rules are
+ * never wrapped and may overflow, like CSS `pre`.
  */
 import { parseBlocks, type CellAlign } from './blocks'
 import type { InlineRun } from './inline'
@@ -46,6 +49,14 @@ export interface LayoutOptions {
   align?: 'left' | 'right'
   /** Override the body font family (e.g. a handwriting font for sticky notes). */
   fontFamily?: string
+  /**
+   * Opt-in soft wrap: break paragraph, heading, blockquote and list-item lines
+   * at word boundaries so they fit within this width. Undefined or <= 0
+   * disables wrapping (identical to the nowrap layout). A single token wider
+   * than the available width overflows on its own line (no mid-word breaks);
+   * code blocks, tables and rules are never wrapped.
+   */
+  maxWidth?: number
 }
 
 export const MD_FONT =
@@ -268,6 +279,113 @@ function measureInline (
   return { runs: out, width: cursor }
 }
 
+interface WrappedLine {
+  runs: DraftRun[]
+  width: number
+}
+
+/**
+ * Greedily wrap measured runs into visual lines that fit within `limit` where
+ * possible. Tokens split at spaces; an inline-code run (`codeBg`) is one
+ * unbreakable token; a token wider than the available width overflows on its
+ * own line. Spaces sitting at a break are dropped — they neither widen the
+ * broken line nor start the continuation line. A styled run may split across
+ * lines: each piece keeps the run's font/color/flags and is re-measured with
+ * the run's exact font string so widths match what draw.ts paints.
+ *
+ * The first line starts at `firstStartX`; continuation lines at `contStartX`
+ * (the hanging indent). Always returns at least one line.
+ */
+function wrapRuns (
+  ctx: CanvasRenderingContext2D,
+  source: DraftRun[],
+  firstStartX: number,
+  contStartX: number,
+  limit: number
+): WrappedLine[] {
+  const lines: WrappedLine[] = []
+  let lineRuns: DraftRun[] = []
+  let cursor = firstStartX
+  let hasWord = false
+  let pending: Array<{ src: DraftRun; text: string }> = []
+  let piece: { src: DraftRun; text: string; startX: number; width: number } | null = null
+
+  const measure = (src: DraftRun, text: string): number => {
+    ctx.font = src.font
+    return ctx.measureText(text).width + (src.codeBg ? 6 : 0)
+  }
+
+  const flushPiece = (): void => {
+    if (!piece) return
+    lineRuns.push({
+      text: piece.text,
+      font: piece.src.font,
+      color: piece.src.color,
+      relX: piece.startX,
+      width: piece.width,
+      underline: piece.src.underline,
+      strike: piece.src.strike,
+      codeBg: piece.src.codeBg
+    })
+    piece = null
+  }
+
+  const commit = (src: DraftRun, text: string): void => {
+    if (piece && piece.src !== src) flushPiece()
+    if (!piece) piece = { src, text: '', startX: cursor, width: 0 }
+    piece.text += text
+    // Re-measure the whole accumulated piece so the stored width is exactly
+    // what draw.ts paints for this run's text.
+    piece.width = measure(src, piece.text)
+    cursor = piece.startX + piece.width
+  }
+
+  const breakLine = (): void => {
+    flushPiece()
+    lines.push({ runs: lineRuns, width: cursor })
+    lineRuns = []
+    cursor = contStartX
+    hasWord = false
+    pending = []
+  }
+
+  for (const src of source) {
+    // An inline-code chip wraps as a whole; other runs split at spaces into
+    // alternating word and all-space tokens.
+    const tokens = src.codeBg
+      ? (src.text === '' ? [] : [src.text])
+      : src.text.split(/( +)/).filter((t) => t !== '')
+    for (const tok of tokens) {
+      if (!src.codeBg && tok.startsWith(' ')) {
+        pending.push({ src, text: tok })
+        continue
+      }
+      const needed =
+        pending.reduce((sum, p) => sum + measure(p.src, p.text), 0) +
+        measure(src, tok)
+      if (hasWord && cursor + needed > limit) {
+        // Doesn't fit after what the line already holds: break, dropping the
+        // spaces that sat at the break. A line with no word yet never breaks,
+        // so an overlong token overflows instead of looping.
+        breakLine()
+      } else if (lines.length === 0 || hasWord) {
+        // Keep leading spaces on the first line and inter-word spaces that
+        // fit; a continuation line never starts with spaces.
+        for (const p of pending) commit(p.src, p.text)
+      }
+      pending = []
+      commit(src, tok)
+      hasWord = true
+    }
+  }
+
+  // Trailing spaces count toward the last line, as in the nowrap layout.
+  for (const p of pending) commit(p.src, p.text)
+  flushPiece()
+  lines.push({ runs: lineRuns, width: cursor })
+  return lines
+}
+
 export function layoutMarkdown (
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -275,6 +393,11 @@ export function layoutMarkdown (
 ): MarkdownLayout {
   const align = options.align ?? 'left'
   const family = options.fontFamily
+  // Soft wrap is opt-in: undefined or <= 0 keeps the nowrap layout unchanged.
+  const maxWidth =
+    options.maxWidth !== undefined && options.maxWidth > 0
+      ? options.maxWidth
+      : undefined
   const blocks = parseBlocks(text)
   const lines: DraftLine[] = []
   // Marks code-block line ranges for a unified background.
@@ -296,13 +419,25 @@ export function layoutMarkdown (
         const size = HEADING_SIZE[block.level ?? 1]
         const lh = Math.round(size * 1.25)
         const { runs, width } = measureInline(ctx, block.runs, size, { heading: block.level, family })
-        pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: size, quote: false })
+        if (maxWidth === undefined) {
+          pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: size, quote: false })
+        } else {
+          for (const wl of wrapRuns(ctx, runs, 0, 0, maxWidth)) {
+            pushLine({ runs: wl.runs, width: wl.width, height: lh, lineHeight: lh, fontSize: size, quote: false })
+          }
+        }
         break
       }
       case 'paragraph': {
         const lh = Math.round(BASE_SIZE * BASE_LH)
         const { runs, width } = measureInline(ctx, block.runs, BASE_SIZE, { family })
-        pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: false })
+        if (maxWidth === undefined) {
+          pushLine({ runs, width, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: false })
+        } else {
+          for (const wl of wrapRuns(ctx, runs, 0, 0, maxWidth)) {
+            pushLine({ runs: wl.runs, width: wl.width, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: false })
+          }
+        }
         break
       }
       case 'blockquote': {
@@ -315,8 +450,19 @@ export function layoutMarkdown (
           startX,
           family
         })
-        const lineWidth = align === 'right' ? width + QUOTE_INDENT : width
-        pushLine({ runs, width: lineWidth, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: true })
+        if (maxWidth === undefined) {
+          const lineWidth = align === 'right' ? width + QUOTE_INDENT : width
+          pushLine({ runs, width: lineWidth, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: true })
+        } else {
+          // Right-align reserves the indent on the right, so the text itself
+          // must fit within maxWidth - indent for the line to fit maxWidth.
+          // Every wrapped line is a quote line so each gets its own bar.
+          const limit = align === 'right' ? maxWidth - QUOTE_INDENT : maxWidth
+          for (const wl of wrapRuns(ctx, runs, startX, startX, limit)) {
+            const lineWidth = align === 'right' ? wl.width + QUOTE_INDENT : wl.width
+            pushLine({ runs: wl.runs, width: lineWidth, height: lh, lineHeight: lh, fontSize: BASE_SIZE, quote: true })
+          }
+        }
         break
       }
       case 'list-item': {
@@ -330,14 +476,30 @@ export function layoutMarkdown (
         // Body must start after the marker so wide (multi-digit) markers never overlap it.
         const bodyStart = Math.max(indent, marker.width)
         const body = measureInline(ctx, block.runs, BASE_SIZE, { startX: bodyStart, family })
-        pushLine({
-          runs: [...marker.runs, ...body.runs],
-          width: Math.max(marker.width, body.width),
-          height: lh,
-          lineHeight: lh,
-          fontSize: BASE_SIZE,
-          quote: false
-        })
+        if (maxWidth === undefined) {
+          pushLine({
+            runs: [...marker.runs, ...body.runs],
+            width: Math.max(marker.width, body.width),
+            height: lh,
+            lineHeight: lh,
+            fontSize: BASE_SIZE,
+            quote: false
+          })
+        } else {
+          // Hanging indent: continuation lines start at the body start X so
+          // wrapped text never runs under the marker.
+          const wrapped = wrapRuns(ctx, body.runs, bodyStart, bodyStart, maxWidth)
+          wrapped.forEach((wl, i) => {
+            pushLine({
+              runs: i === 0 ? [...marker.runs, ...wl.runs] : wl.runs,
+              width: i === 0 ? Math.max(marker.width, wl.width) : wl.width,
+              height: lh,
+              lineHeight: lh,
+              fontSize: BASE_SIZE,
+              quote: false
+            })
+          })
+        }
         break
       }
       case 'code': {
