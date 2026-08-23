@@ -10,6 +10,7 @@ files at fixed names plus a manifest:
 ```
 dist/index.js       one IIFE bundle (React and @mindmaps/engine included)
 dist/index.css      one stylesheet
+dist/block.js       the block editor's registration — no React of its own
 dist/manifest.json  Vite's manifest, for the plugin's asset versioning
 ```
 
@@ -58,6 +59,8 @@ carry two embeds of different maps:
 | `data-can-edit` | `"1"` | this visitor may write *this* map |
 | | `"0"` (or anything else) | read-only |
 | | absent | fall back to the payload's `canEdit` (older plugin) |
+| `data-controls` | `"0"` | the map and nothing over it, framed on arrival |
+| | absent | draw the controls, open at 100% |
 
 The empty `data-map-id` matters: `[mind_map]` on a page that also carries
 `[mind_map id="42"]` has to reach the list, and a page-wide fallback would
@@ -97,7 +100,7 @@ puts that embed in read-only mode. The decision is made once per mount, in
 
 - the list renders rows without the star/remove controls, and without the
   "New" affordance — not the same rows with dead buttons;
-- the editor is handed an `onSave` that never touches the store. The toolbar's
+- the editor is handed an `onSave` that never touches the store. The island's
   save button and ⌘S both land in that same handler, so there is no shortcut
   around a hidden control;
 - a badge says the embed is read-only, and says so more loudly once a save has
@@ -106,6 +109,78 @@ puts that embed in read-only mode. The decision is made once per mount, in
 The canvas itself stays interactive — the engine has no read-only mode, so a
 read-only visitor can still drag nodes around locally. Nothing they do is
 persisted, and nothing they do can reach the REST API.
+
+This is the mode a **signed-out** reader gets. A published map is readable
+without an account, which is the point of embedding one in a post: the payload
+carries `canEdit: false`, every mount prints `data-can-edit="0"`, and the map
+can be read, panned, folded and exported but not changed. Nothing else is
+readable signed-out — not the map list, and not a draft.
+
+## The block in the inserter
+
+`src/block.ts` is the editor half of the `mind-maps/map` block — the reason it
+appears in the inserter at all. The plugin registers and renders the block in
+PHP, so a post that already contains one has always worked; but a block with no
+client registration has no `edit`, and the editor will not offer what it cannot
+draw.
+
+It is built separately (`vite.block.config.ts` → `dist/block.js`, a few KB) and
+shares nothing with `index.js`:
+
+- It is written against **WordPress' React**, reached through `window.wp`. That
+  is not a style choice — two Reacts cannot render each other's elements, the
+  same wall the command palette hits with icons. Hence no JSX and no `react`
+  import anywhere in that file.
+- What it *does* share is `@mindmaps/engine/preview` and
+  `@mindmaps/storage/document`, which are pure functions over stored
+  coordinates and belong to neither React. Those subpath exports exist so a
+  second bundle can take the projection without taking the engine.
+
+An author picks a map and sees a **still** of it: its shape, its title and its
+node count. The front end mounts the real thing, but a live, pannable, editable
+canvas inside the post editor would be two editors fighting over the same drag.
+`parseMapSummary` reads the picker's rows, so the block understands both shapes
+`GET /maps` can return — a summary, or the whole document it still sends.
+
+## One command palette, not two
+
+The admin answers ⌘K with WordPress' own "Search commands and settings", and
+the editor used to answer it as well. Which of the two you got depended on
+where the focus happened to be, and neither knew about the other's actions.
+
+So in the admin the editor stands down: `onCommands` hands its command list
+over, which suppresses its own palette and leaves the shortcut alone, and
+`src/commands.ts` registers the list into the `core/commands` store — where the
+map's actions sit beside "Go to: Posts" as `Mind map: Undo (⌘Z)` and the rest.
+They are registered while a map is open and taken back when it closes.
+
+They are registered against the palette's **context**, which is what lists them
+without anything being typed. WordPress builds the "Suggestions" it shows on an
+empty query out of the commands whose `context` matches the current one, and
+leaves everything else — the forty-odd site-wide "Go to: …" entries — behind
+the search. So ⌘K over a map opens on what you can do to the map:
+
+```
+SUGGESTIONS
+  Mind map: Add root node
+  Mind map: Add sticky note
+  Mind map: Duplicate branch (⌘D)
+  …
+```
+
+Two more details are not incidental:
+
+- The palette calls through a ref rather than the closure registration saw. The
+  editor rebuilds its commands on every render, and `undo` from three renders
+  ago undoes the wrong thing; registering is keyed on which commands exist, so
+  it happens when the set changes rather than on every keystroke.
+- Icons are dropped. They are components from this bundle's React, and the
+  palette renders them with WordPress' — a different copy, which does not
+  recognise the other's elements.
+
+None of this happens on the front end: `wp-commands` is not loaded there, so
+`commandStore()` finds nothing, the editor keeps its own ⌘K palette, and a
+shortcode embed is unaffected.
 
 ## CSS in somebody else's page
 

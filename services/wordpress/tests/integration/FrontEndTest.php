@@ -347,6 +347,87 @@ final class FrontEndTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'data-map-id="' . $map_id . '"', $rendered );
 	}
 
+	/* ---------------------------------------------------------------------
+	 * The admin bar's "+ New" entry.
+	 * ------------------------------------------------------------------ */
+
+	public function test_the_admin_bar_offers_a_new_mind_map(): void {
+		\wp_set_current_user( $this->author );
+
+		$bar = $this->admin_bar_with_new_menu();
+		Admin\register_admin_bar( $bar );
+
+		$node = $bar->get_node( 'new-mind-map' );
+		$this->assertNotNull( $node, 'The node should hang off core\'s "+ New" menu.' );
+		$this->assertSame( 'new-content', $node->parent );
+		// The link only opens the picker — creating a map is a REST write, and a
+		// GET a browser may prefetch must not make one.
+		$this->assertStringContainsString( 'page=mind-maps', (string) $node->href );
+		$this->assertStringContainsString( 'new=1', (string) $node->href );
+	}
+
+	public function test_a_reader_is_offered_no_new_mind_map(): void {
+		\wp_set_current_user( $this->subscriber );
+
+		$bar = $this->admin_bar_with_new_menu();
+		Admin\register_admin_bar( $bar );
+
+		$this->assertNull( $bar->get_node( 'new-mind-map' ) );
+	}
+
+	public function test_the_entry_is_skipped_when_core_omits_the_new_menu(): void {
+		// Core builds "+ New" only for a user who may create something; without
+		// the parent the node would be dropped silently rather than shown.
+		\wp_set_current_user( $this->author );
+
+		$bar = $this->admin_bar();
+		Admin\register_admin_bar( $bar );
+
+		$this->assertNull( $bar->get_node( 'new-mind-map' ) );
+	}
+
+	public function test_the_screen_is_told_to_start_a_map_when_asked(): void {
+		\wp_set_current_user( $this->author );
+		$_GET = array(
+			'page' => 'mind-maps',
+			'new'  => '1',
+		);
+
+		\ob_start();
+		Admin\render_page();
+		$rendered = (string) \ob_get_clean();
+		$_GET     = array();
+
+		$this->assertStringContainsString( 'data-new="1"', $rendered );
+
+		// And not otherwise — a shortcode embed must never create anything.
+		$this->assertStringNotContainsString(
+			'data-new',
+			\do_shortcode( '[mind_map]' )
+		);
+	}
+
+	/**
+	 * A bare admin bar.
+	 *
+	 * WordPress loads `WP_Admin_Bar` lazily, when a request actually renders the
+	 * bar, so a test has to ask for the file itself.
+	 */
+	private function admin_bar(): \WP_Admin_Bar {
+		require_once ABSPATH . WPINC . '/class-wp-admin-bar.php';
+		return new \WP_Admin_Bar();
+	}
+
+	/** An admin bar carrying core's "+ New" parent node. */
+	private function admin_bar_with_new_menu(): \WP_Admin_Bar {
+		$bar = $this->admin_bar();
+		$bar->add_node( array(
+			'id'    => 'new-content',
+			'title' => 'New',
+		) );
+		return $bar;
+	}
+
 	/** An administrator id, created on demand. */
 	private function admin_user(): int {
 		return self::factory()->user->create( array( 'role' => 'administrator' ) );

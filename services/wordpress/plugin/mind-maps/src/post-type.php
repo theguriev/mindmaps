@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 namespace MindMaps\PostType;
 
+defined( 'ABSPATH' ) || exit;
+
 /** Post type name. */
 const POST_TYPE = 'mind_map';
 

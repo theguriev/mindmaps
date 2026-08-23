@@ -1,6 +1,7 @@
 import type {} from '../renderer/jsx'
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -33,7 +34,8 @@ import type {
   MapDoc,
   MindNode,
   NodeId,
-  PathEdge
+  PathEdge,
+  RawNode
 } from '../mindmap/types'
 import {
   ArrowLeftIcon,
@@ -66,7 +68,7 @@ import { editorOverlayAnchor } from '../components/NodeScene'
 import { EDITOR_MIN_H, EDITOR_MIN_W, nodeBounds } from '../components/nodeGeometry'
 import { TextEditorOverlay } from '../components/TextEditorOverlay'
 import { EdgeEditor } from '../components/EdgeEditor'
-import { Toolbar } from '../components/Toolbar'
+import { Island } from '../components/Island'
 import { CanvasControls } from '../components/CanvasControls'
 import { CreateToolbar } from '../components/CreateToolbar'
 import { CommandMenu, type MenuCommand } from '../components/CommandMenu'
@@ -199,8 +201,11 @@ export interface MindMapEditorProps {
   /** The document to edit. The host loads it from wherever it lives
    *  (localStorage, the WordPress REST API, a file) and hands it over here. */
   doc: MapDoc
-  /** Persist the edited document. May be async — the toolbar reflects the
-   *  in-flight and failed states, so a network backend needs no extra UI. */
+  /** Persist the edited document. Called on its own, a beat after the map
+   *  stops changing, and once more on the way out — nobody presses a button to
+   *  keep their own work. May be async: the in-flight and failed states are
+   *  shown beside the title, so a network backend needs no extra UI, and a
+   *  rejection leaves the map dirty so the next change retries it. */
   onSave: (doc: MapDoc) => void | Promise<void>
   /** Back affordance. Omitted (e.g. embedded in a WordPress page) → no button
    *  and no "Back to maps" command. */
@@ -215,14 +220,65 @@ export interface MindMapEditorProps {
    *  embedded in someone else's page must not steal focus, so it defaults to
    *  false and the first click inside the editor arms the shortcuts. */
   autoFocus?: boolean
+  /**
+   * Draw the floating controls, or present the map on its own.
+   *
+   * `false` leaves nothing over the canvas: no title, no actions, no create
+   * bar, no zoom. For a map placed in somebody's post that is often the point
+   * — the reader came for the diagram, not for a toolbar they cannot use —
+   * and it pairs with `fitOnMount`, because a map you cannot zoom had better
+   * arrive already fitting.
+   */
+  controls?: boolean
+  /** Frame the whole map on the first paint, instead of opening at 100% on
+   *  wherever the root happens to be. */
+  fitOnMount?: boolean
   /** Host-specific entries appended to the ⌘K palette. */
   extraCommands?: MenuCommand[]
+  /**
+   * Take over the command palette.
+   *
+   * Called with the editor's commands whenever they change, and it means the
+   * host is presenting them: the built-in ⌘K palette is not rendered and the
+   * shortcut is left alone. That is what a host with a palette of its own
+   * needs — the WordPress admin already answers ⌘K with "Search commands and
+   * settings", and two palettes on one shortcut is a coin toss decided by
+   * where the focus happens to be.
+   *
+   * The list is rebuilt on every render, so a host that registers these
+   * somewhere should key on their labels and call through a ref rather than
+   * re-register on identity.
+   */
+  onCommands?: (commands: MenuCommand[]) => void
   /** Class for the editor's root element. Defaults to filling its offset
    *  parent, which is what a full-page host wants; embeds pass their own. */
   className?: string
 }
 
 type SaveState = 'idle' | 'saving' | 'error'
+
+/** How long the map has to stop changing before it is written. Long enough
+ *  that typing a word is one save, short enough that nobody outruns it. */
+const AUTOSAVE_DELAY = 800
+
+/**
+ * What autosave compares to decide the map changed.
+ *
+ * `editing` is left out on purpose: it rides along in the adjacency so the
+ * renderer knows which node has an open editor, and clicking into a node is
+ * not an edit. Nothing persists it either — both parsers drop it — so a save
+ * triggered by it would write a document identical to the stored one.
+ */
+function contentKey (content: Array<[NodeId, RawNode]>): string {
+  return JSON.stringify(
+    content.map(([id, node]) => {
+      if (node.editing === undefined) return [id, node]
+      const { editing: _editing, ...rest } = node
+      void _editing
+      return [id, rest]
+    })
+  )
+}
 
 /**
  * The whole mind-map editing experience — canvas scene, text overlay, toolbars,
@@ -235,7 +291,10 @@ export function MindMapEditor ({
   onBack,
   readOnly = false,
   autoFocus = false,
+  controls = true,
+  fitOnMount = false,
   extraCommands,
+  onCommands,
   className = 'absolute inset-0'
 }: MindMapEditorProps) {
   // Opt out of the React Compiler: this component bridges into the custom canvas
@@ -264,6 +323,16 @@ export function MindMapEditor ({
   const [saveState, setSaveState] = useState<SaveState>('idle')
 
   const initial = new Map(doc.content ?? [])
+
+  /**
+   * The content that is already stored, as `contentKey` sees it.
+   *
+   * Seeded from the document the host handed over — which is by definition
+   * what the backend already has, so an editor that is opened and closed
+   * writes nothing. The same seed `useAdjacency` takes, and it is read once
+   * for the same reason: a host that swaps the document swaps the editor.
+   */
+  const [savedKey, setSavedKey] = useState(() => contentKey(Array.from(initial.entries())))
   const {
     adjacency,
     list,
@@ -776,23 +845,37 @@ export function MindMapEditor ({
 
   // ---- Save ----
   // The map's title mirrors its root node's text. `onSave` may be async (a
-  // REST backend); the toolbar shows the in-flight/failed state so a slow or
-  // rejected save is never silent.
+  // REST backend); the title island shows the in-flight/failed state so a slow
+  // or rejected save is never silent.
   const save = () => {
     if (readOnly) return
     const root = adjacency.get(0)
+    const content = Array.from(adjacency.entries())
     const next: MapDoc = {
       ...doc,
       title: root?.name ?? doc.title,
-      content: Array.from(adjacency.entries()),
+      content,
       modified: new Date().toISOString()
     }
+
+    // Claimed before the write, not after: a save that is in flight has
+    // already covered these changes, and re-scheduling them would send the
+    // same document twice. A failure puts the claim back, which is what makes
+    // the map dirty again and the retry send the newest version of it.
+    const previous = savedKey
+    setSavedKey(contentKey(content))
+
     let result: void | Promise<void>
+    const failed = (error: unknown) => {
+      setSavedKey(previous)
+      setSaveState('error')
+      console.error('[mind-maps] save failed', error)
+    }
+
     try {
       result = onSave(next)
     } catch (error) {
-      setSaveState('error')
-      console.error('[mind-maps] save failed', error)
+      failed(error)
       return
     }
     if (!(result instanceof Promise)) {
@@ -800,14 +883,46 @@ export function MindMapEditor ({
       return
     }
     setSaveState('saving')
-    result.then(
-      () => setSaveState('idle'),
-      (error: unknown) => {
-        setSaveState('error')
-        console.error('[mind-maps] save failed', error)
-      }
-    )
+    result.then(() => setSaveState('idle'), failed)
   }
+
+  // ---- Autosave ----
+  // Nobody should have to remember to press a button to keep their own work.
+  // The map is written a beat after the last change, which is what makes the
+  // save button unnecessary rather than merely hidden.
+  //
+  // `contentKey` decides what counts as a change, and it is not the adjacency's
+  // identity: entering and leaving a node's editor replaces the map without
+  // altering it, and clicking into a node is not an edit.
+  //
+  // Memoized on the adjacency, which only changes when the map does. This
+  // component opts out of the compiler (`use no memo`), and serializing the
+  // whole map on every render would put it in the path of every pan and drag.
+  const currentKey = useMemo(() => contentKey(Array.from(adjacency.entries())), [adjacency])
+  const dirty = savedKey !== currentKey
+
+  // What the flush on the way out has to read: a cleanup closes over the
+  // render that created it, and the last change is exactly the one that would
+  // be missing from it. Written in an effect rather than during render —
+  // a render that never commits must not be able to leave a value behind.
+  const flushRef = useRef({ save, dirty })
+  useEffect(() => {
+    flushRef.current = { save, dirty }
+  })
+
+  useEffect(() => {
+    if (readOnly || !dirty) return
+    const timer = setTimeout(() => flushRef.current.save(), AUTOSAVE_DELAY)
+    return () => clearTimeout(timer)
+  }, [readOnly, dirty, currentKey])
+
+  useEffect(() => {
+    // Leaving the editor is when the debounce would lose the most: closing a
+    // map a keystroke after typing in it must not be the way to discard it.
+    return () => {
+      if (flushRef.current.dirty) flushRef.current.save()
+    }
+  }, [])
 
   // World-space bounding box of all visible nodes (for zoom-to-fit).
   const contentBounds = () => {
@@ -826,6 +941,25 @@ export function MindMapEditor ({
     }
     return { minX, minY, maxX, maxY }
   }
+
+  // ---- Framing on arrival ----
+  // A map opens at 100% on wherever its root sits, which is right for an
+  // editor you are about to work in and wrong for one you were handed. Fitting
+  // waits for the first real measurement: the canvas has no size until it is
+  // laid out, and `zoomToFit` reads the element's own rectangle.
+  const fittedRef = useRef(false)
+  useEffect(() => {
+    if (!fitOnMount || fittedRef.current) return
+    if (width === 0 || height === 0) return
+    const bounds = contentBounds()
+    if (bounds === null) return
+    fittedRef.current = true
+    viewport.zoomToFit(bounds)
+    // `contentBounds` and `viewport` are rebuilt every render, and depending on
+    // them would re-frame the map under the reader on every keystroke. The ref
+    // is the real guard: this runs once, on the first measurement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitOnMount, width, height])
 
   // ---- Keyboard (Figma-style) ----
   useEvent<KeyboardEvent>(
@@ -894,8 +1028,9 @@ export function MindMapEditor ({
       duplicateSelection()
       return
     }
-    // ⌘K — command menu
-    if (event.metaKey && event.code === 'KeyK') {
+    // ⌘K — command menu. Left untouched when a host presents the commands
+    // itself, so its own palette answers the shortcut.
+    if (event.metaKey && event.code === 'KeyK' && onCommands === undefined) {
       event.preventDefault()
       setCommandOpen((open) => !open)
       return
@@ -1028,7 +1163,9 @@ export function MindMapEditor ({
         },
         { group: 'Edit', label: 'Undo', shortcut: '⌘Z', icon: Undo2Icon, run: undo },
         { group: 'Edit', label: 'Redo', shortcut: '⌘⇧Z', icon: Redo2Icon, run: redo },
-        { group: 'File', label: 'Save', shortcut: '⌘S', icon: SaveIcon, run: save }
+        // The map saves itself; this is for the hand that reaches for ⌘S
+        // anyway, and for getting a failed save back on its feet.
+        { group: 'File', label: 'Save now', shortcut: '⌘S', icon: SaveIcon, run: save }
       ]
 
   const commands: MenuCommand[] = [
@@ -1057,12 +1194,12 @@ export function MindMapEditor ({
     ...(extraCommands ?? [])
   ]
 
-  const SaveIndicator =
-    saveState === 'saving'
-      ? LoaderCircleIcon
-      : saveState === 'error'
-        ? TriangleAlertIcon
-        : SaveIcon
+  // Handed over after every commit, not when the list looks different: what
+  // changes on most renders is not which commands exist but what they close
+  // over, and a host running last render's `undo` would undo the wrong thing.
+  useEffect(() => {
+    onCommands?.(commands)
+  })
 
   return (
     <div
@@ -1079,90 +1216,90 @@ export function MindMapEditor ({
         rootEl?.focus({ preventScroll: true })
       }}
     >
-      <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      {onCommands === undefined && (
+        <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
+      )}
       <NodeSearch open={searchOpen} onOpenChange={setSearchOpen} list={list} onJump={jumpToNode} />
-      <Toolbar
-        left={
-          <>
-            {onBack && (
-              <>
-                <Button variant="ghost" size="icon" title="Back" onClick={onBack}>
-                  <ArrowLeftIcon />
-                </Button>
-                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
-              </>
-            )}
-            {rootNode && (
-              <h1 className="truncate text-lg font-semibold">{rootNode.name}</h1>
-            )}
-          </>
-        }
-        right={
-          <>
-            {!readOnly && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title="Add sticky note"
-                  onClick={onAddSticky}
-                >
-                  <StickyNoteIcon />
-                </Button>
-                <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-7" />
-              </>
-            )}
-            {!readOnly && (
+      {/* Nothing above the canvas: the map owns the whole surface and the
+          controls float over it, so an embed spends none of its host's page on
+          a title bar. The rows themselves let pointer events through — only the
+          islands inside them take clicks. */}
+      {controls && (
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
+        {(onBack !== undefined || rootNode !== undefined || saveState !== 'idle') && (
+        <Island className="min-w-0 gap-1">
+          {onBack && (
+            <>
+              <Button variant="ghost" size="icon" aria-label="Back" onClick={onBack}>
+                <ArrowLeftIcon aria-hidden="true" />
+              </Button>
+              <Separator
+                orientation="vertical"
+                className="mx-0.5 data-[orientation=vertical]:h-5"
+              />
+            </>
+          )}
+          {rootNode && (
+            <h1 className="truncate px-2 text-sm font-semibold">{rootNode.name}</h1>
+          )}
+          {/* The map saves itself, so there is nothing to press and nothing to
+              say while that is going well. The two states worth a word are the
+              one you might be waiting on and the one that lost your work — the
+              second is a button, because a failed save is only news if you can
+              do something about it. */}
+          {saveState === 'saving' && (
+            <span className="flex shrink-0 items-center gap-1.5 px-2 text-xs text-muted-foreground">
+              <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+              Saving…
+            </span>
+          )}
+          {saveState === 'error' && (
             <Button
               variant="ghost"
-              size="icon"
-              title={
-                saveState === 'error'
-                  ? 'Save failed — click to retry  ⌘S'
-                  : saveState === 'saving'
-                    ? 'Saving…'
-                    : 'Save  ⌘S'
-              }
+              size="sm"
+              className="shrink-0 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Save failed — retry (⌘S)"
               onClick={save}
             >
-              <SaveIndicator
-                className={
-                  saveState === 'saving'
-                    ? 'animate-spin'
-                    : saveState === 'error'
-                      ? 'text-destructive'
-                      : undefined
-                }
-              />
+              <TriangleAlertIcon className="size-3.5" aria-hidden="true" />
+              Not saved — retry
             </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" title="Export  ⌘⇧E">
-                  <DownloadIcon />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={saveJpeg}>JPEG</DropdownMenuItem>
-                <DropdownMenuItem onClick={savePng}>
-                  PNG <span className="ml-auto text-muted-foreground">⌘⇧E</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          )}
+        </Island>
+        )}
+        <Island className="gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Export (⌘⇧E)">
+                <DownloadIcon aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={saveJpeg}>JPEG</DropdownMenuItem>
+              <DropdownMenuItem onClick={savePng}>
+                PNG <span className="ml-auto text-muted-foreground">⌘⇧E</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={saveSvg}>SVG</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* Gone when a host presents the commands: the button would open a
+              palette that is no longer rendered, and the host's own — which
+              answers the same ⌘K — advertises itself. */}
+          {onCommands === undefined && (
             <Button
               variant="ghost"
               size="icon"
-              title="Command menu  ⌘K"
+              aria-label="Command menu (⌘K)"
               onClick={() => setCommandOpen(true)}
             >
-              <CommandIcon />
+              <CommandIcon aria-hidden="true" />
             </Button>
-          </>
-        }
-      />
+          )}
+        </Island>
+      </div>
+      )}
       <div
-        className="absolute inset-x-0 bottom-0 top-14 overflow-hidden bg-background"
+        className="absolute inset-0 overflow-hidden bg-background"
         ref={contentRef}
       >
         <Canvas
@@ -1215,7 +1352,9 @@ export function MindMapEditor ({
             onStartResize={onStartResize}
           />
         )}
+        {controls && (
         <CanvasControls
+          history={!readOnly}
           scale={viewport.scale}
           onZoomOut={viewport.zoomOut}
           onZoomIn={viewport.zoomIn}
@@ -1223,12 +1362,14 @@ export function MindMapEditor ({
           onZoomFit={() => viewport.zoomToFit(contentBounds())}
           onUndo={undo}
           onRedo={redo}
-          canUndo={!readOnly && canUndo}
-          canRedo={!readOnly && canRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
-        {!readOnly && (
+        )}
+        {controls && !readOnly && (
           <CreateToolbar
             onAddRoot={onAddRoot}
+            onAddSticky={onAddSticky}
             onReactionDragStart={onReactionDragStart}
           />
         )}

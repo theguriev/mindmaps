@@ -49,6 +49,25 @@ function plugin_file(): string {
 	return service_dir() . '/plugin/mind-maps/mind-maps.php';
 }
 
+/**
+ * The plugin's source files, in dependency order.
+ *
+ * @return string[]
+ */
+function source_files(): array {
+	$src = service_dir() . '/plugin/mind-maps/src/';
+	return array(
+		$src . 'document.php',
+		$src . 'post-type.php',
+		$src . 'repository.php',
+		$src . 'rest.php',
+		$src . 'assets.php',
+		$src . 'render.php',
+		$src . 'admin.php',
+		$src . 'plugin.php',
+	);
+}
+
 $mind_maps_autoload = service_dir() . '/vendor/autoload.php';
 if ( ! \is_readable( $mind_maps_autoload ) ) {
 	\fwrite( \STDERR, "\n  Run `composer install` in services/wordpress first.\n\n" );
@@ -57,5 +76,23 @@ if ( ! \is_readable( $mind_maps_autoload ) ) {
 require_once $mind_maps_autoload;
 
 if ( wants_integration( $GLOBALS['argv'] ?? array(), (string) \getenv( 'MINDMAPS_TESTS' ) ) ) {
+	// WordPress loads the plugin itself, through `muplugins_loaded`, once it
+	// has defined ABSPATH — see bootstrap-integration.php.
 	require_once __DIR__ . '/bootstrap-integration.php';
+	return;
+}
+
+// The unit suite runs with no WordPress at all, and every source file now
+// begins with `defined( 'ABSPATH' ) || exit;` — the guard the plugin directory
+// requires so a file cannot be executed by being requested directly. Defining
+// the constant here is what lets those files be loaded outside WordPress; it
+// is deliberately NOT defined before the integration branch above, because
+// WordPress locates its own core through ABSPATH and a made-up value would
+// break that suite far worse than it helps this one.
+if ( ! \defined( 'ABSPATH' ) ) {
+	\define( 'ABSPATH', service_dir() . '/' );
+}
+
+foreach ( source_files() as $mind_maps_source ) {
+	require_once $mind_maps_source;
 }

@@ -19,6 +19,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Rest;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Document;
 use MindMaps\Repository;
 use WP_Error;
@@ -88,11 +90,26 @@ function register_routes(): void {
 			),
 		)
 	);
+
+	\register_rest_route(
+		REST_NAMESPACE,
+		'/maps/(?P<id>\d+)/template',
+		array(
+			array(
+				'methods'             => 'PUT',
+				'callback'            => __NAMESPACE__ . '\\handle_set_template',
+				// The same capability a full update needs: this writes to the
+				// map, and a narrower route is not a weaker gate.
+				'permission_callback' => __NAMESPACE__ . '\\can_edit_map',
+				'args'                => $id_arg,
+			),
+		)
+	);
 }
 
-/* -------------------------------------------------------------------------
- * Errors — stable codes the client branches on.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Errors — stable codes the client branches on.
+// --------------------------------------------------------------------------
 
 /**
  * 400: the payload is not a valid document.
@@ -127,9 +144,9 @@ function error_not_found(): WP_Error {
 	);
 }
 
-/* -------------------------------------------------------------------------
- * Permissions — real capabilities, never `__return_true`.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Permissions — real capabilities, never `__return_true`.
+// --------------------------------------------------------------------------
 
 /**
  * True when the current user may see someone else's maps.
@@ -173,12 +190,31 @@ function can_create_map(): bool|WP_Error {
  * @return true|WP_Error
  */
 function can_read_map( WP_REST_Request $request ): bool|WP_Error {
-	if ( ! \current_user_can( 'read' ) ) {
-		return error_forbidden();
-	}
 	$post = Repository\find_map_post( request_id( $request ) );
 	if ( null === $post ) {
 		return error_not_found();
+	}
+
+	// A published map is readable by anyone, signed in or not.
+	//
+	// This is what makes the shortcode and the block worth having: a map put
+	// into a post is meant to be seen by whoever reads the post, and most of
+	// them are not logged in. Requiring `read` here meant every embed on a
+	// public site rendered "You do not have permission to open this mind map"
+	// to its actual audience.
+	//
+	// Reading is all it grants. Writing still needs `edit_post` on the map,
+	// and a signed-out visitor has no nonce, so the app puts the editor in
+	// read-only mode — the map can be panned, zoomed, folded and exported,
+	// and nothing that changes it can reach the API.
+	if ( 'publish' === $post->post_status ) {
+		return true;
+	}
+
+	// Everything else — a contributor's draft, a private map, one pending
+	// review — keeps the old rule: your own, or an editor's view of everyone's.
+	if ( ! \current_user_can( 'read' ) ) {
+		return error_forbidden();
 	}
 	return owns_or_supervises( (int) $post->post_author ) ? true : error_forbidden();
 }
@@ -217,9 +253,9 @@ function can_delete_map( WP_REST_Request $request ): bool|WP_Error {
 	return \current_user_can( 'delete_post', $id ) ? true : error_forbidden();
 }
 
-/* -------------------------------------------------------------------------
- * Handlers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Handlers.
+// --------------------------------------------------------------------------
 
 /**
  * GET /maps.
@@ -289,6 +325,44 @@ function handle_update( WP_REST_Request $request ) {
 }
 
 /**
+ * PUT /maps/{id}/template. Marks a map as a template, or stops.
+ *
+ * One bit, on its own route, because the caller is a list row: it holds a
+ * title and a picture, not a document, and there is nothing for it to PUT.
+ * Sending the whole map to move a flag is what made starring a map somebody
+ * had edited elsewhere quietly revert them.
+ *
+ * @param WP_REST_Request $request Incoming request.
+ */
+function handle_set_template( WP_REST_Request $request ) {
+	$id = request_id( $request );
+
+	// A JSON body decodes to `stdClass`, so it is read through `member()` like
+	// every other one here.
+	$template = Document\member( json_body( $request ), 'template' );
+
+	// Only the two values the contract names. Anything else — a string, a
+	// missing key, `null` — is a caller that does not know what it is asking
+	// for, and guessing on its behalf writes the wrong flag.
+	if ( ! \is_bool( $template ) ) {
+		return error_invalid_document();
+	}
+
+	if ( null === \get_post( $id ) ) {
+		return error_not_found();
+	}
+
+	Repository\set_template( $id, $template );
+
+	return \rest_ensure_response(
+		array(
+			'id'       => (string) $id,
+			'template' => $template,
+		)
+	);
+}
+
+/**
  * DELETE /maps/{id}.
  *
  * @param WP_REST_Request $request Incoming request.
@@ -307,9 +381,9 @@ function handle_delete( WP_REST_Request $request ) {
 	);
 }
 
-/* -------------------------------------------------------------------------
- * Small shared helpers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Small shared helpers.
+// --------------------------------------------------------------------------
 
 /**
  * The request body, decoded the way the validator needs to see it.

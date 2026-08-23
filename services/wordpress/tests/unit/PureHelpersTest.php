@@ -115,6 +115,17 @@ final class PureHelpersTest extends TestCase {
 		);
 	}
 
+	public function test_boot_payload_omits_an_empty_nonce(): void {
+		// A signed-out visitor gets none. Printing an expiring value into HTML
+		// that a page cache may serve for a week is how every anonymous reader
+		// ends up told their session expired, with a reload that cannot help.
+		$payload = boot_payload( 'https://site.test/wp-json/mindmaps/v1', '', '42', false, 'en_US' );
+
+		$this->assertArrayNotHasKey( 'nonce', $payload );
+		$this->assertSame( '42', $payload['mapId'] );
+		$this->assertFalse( $payload['canEdit'] );
+	}
+
 	public function test_boot_payload_omits_the_map_id_for_the_list_view(): void {
 		$payload = boot_payload( 'https://site.test/wp-json/mindmaps/v1', 'n', null, false, 'de_DE' );
 

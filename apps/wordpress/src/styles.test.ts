@@ -14,6 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { scopeCss } from './scopeCss'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ENTRY = path.join(HERE, 'index.css')
@@ -64,7 +65,7 @@ function resolveStylesheet (id: string, base: string): string {
   return path.join(dir, entry)
 }
 
-async function compileEntry (): Promise<string> {
+async function compileEntry (candidates: string[] = []): Promise<string> {
   const compiled = await compile(await readFile(ENTRY, 'utf8'), {
     base: HERE,
     async loadStylesheet (id, base) {
@@ -74,7 +75,13 @@ async function compileEntry (): Promise<string> {
   })
   // A handful of utilities the engine's own markup uses, so the utility layer
   // is populated the way a real build populates it.
-  return compiled.build(['p-4', 'text-sm', 'bg-background', 'border', 'flex'])
+  //
+  // Run through the same confinement the Vite build applies, because that is
+  // the stylesheet WordPress actually enqueues — testing Tailwind's raw output
+  // would be testing a file nobody ships.
+  return scopeCss(
+    compiled.build(['p-4', 'text-sm', 'bg-background', 'border', 'flex', ...candidates])
+  )
 }
 
 /* -------------------------------------------------------------------------
@@ -162,17 +169,27 @@ function customPropertiesOnly (declarations: string): boolean {
 }
 
 /**
- * Whether a single compound selector can only match markup the embed owns:
- * something under a mount container, a Radix portal the engine rendered, or a
- * class of its own (every utility and component class is the embed's).
+ * Whether a selector can only match markup the embed owns.
+ *
+ * This used to answer yes for any selector containing a class token at all, on
+ * the assumption that "every utility class is the embed's". That assumption was
+ * the defect: `.flex`, `.block`, `.hidden`, `.container` and two hundred others
+ * were emitted bare and `!important` onto every page carrying a map, and the
+ * test that existed to catch exactly this waved them through. A theme built on
+ * Bootstrap broke on any page with a map in it.
+ *
+ * So now it means what it says: the selector has to name the embed.
  */
 function ownedByTheEmbed (selector: string): boolean {
   const normalized = selector.replace(/['"]/g, '')
-  if (normalized.includes('.mind-maps-app')) return true
-  if (normalized.includes('[data-slot=')) return true
-  // An unescaped `.` is a class token — `.p-4`, `.hover\:bg-accent:hover`,
-  // `:where(.space-y-1>:not(:last-child))`.
-  return /(^|[^\\])\./.test(normalized)
+  return normalized.includes('.mind-maps-app') || normalized.includes('[data-slot=')
+}
+
+/** The rule a given utility class ends up in, whatever it was scoped into. */
+function ruleFor (rules: StyleRule[], utility: string): StyleRule | undefined {
+  return rules.find((rule) =>
+    splitSelectors(rule.selector).some((part) => part.split(/[\s,]/).includes(`.${utility}`))
+  )
 }
 
 describe('the embed stylesheet', () => {
@@ -188,6 +205,8 @@ describe('the embed stylesheet', () => {
     // If the theme layer or the engine's tokens went missing, everything below
     // would pass by vacuously styling nothing.
     expect(compiled).toContain('.p-4')
+    // …and confined, which is the whole point of the file.
+    expect(compiled).toContain(':where(.mind-maps-app')
     // `@theme inline` resolves `bg-background` straight to the engine's token.
     expect(compiled).toContain('background-color: var(--background)')
     expect(compiled).toContain('--background: #ffffff')
@@ -203,7 +222,8 @@ describe('the embed stylesheet', () => {
     // Preflight's `*`, `html`, `body`, `h1`…`h6`, `a`, `ol, ul, menu`,
     // `button, input, select, optgroup, textarea` land here when somebody
     // imports the full `tailwindcss` entry (directly or through the engine's
-    // stylesheet) instead of theme + utilities.
+    // stylesheet) instead of theme + utilities — and so does any utility that
+    // escaped `scopeCss`.
     expect(offenders.map((rule) => rule.selector)).toEqual([])
   })
 
@@ -229,8 +249,35 @@ describe('the embed stylesheet', () => {
     // theme rule like `.entry-content textarea` still outranks a single
     // utility class on specificity. `important` is what settles it, and it is
     // what the flag exists for — a widget dropped into a page it does not own.
-    const utility = rules.find((rule) => rule.selector === '.p-4')
+    const utility = ruleFor(rules, 'p-4')
     expect(utility?.declarations).toMatch(/!important/)
+  })
+
+  it('can outrank what WordPress paints on a bare form control', async () => {
+    // `forms.css` reaches `input` by element selector: a border, horizontal
+    // padding and, on focus, a 2px shadow in the admin colour. The field cmdk
+    // renders declares none of those, and a rule that declares nothing cannot
+    // win — which is how the template picker's search box ended up framed in
+    // admin blue, the ring spilling over the rule beneath it.
+    //
+    // `CommandInput` answers by naming the neutral values. This is the half of
+    // that fix which lives here: those utilities have to reach the page as
+    // `!important`, or naming them changes nothing.
+    const neutralizers = ['border-0', 'px-0', 'shadow-none']
+
+    const source = await readFile(
+      path.resolve(HERE, '../../../packages/engine/src/components/ui/command.tsx'),
+      'utf8'
+    )
+    const classes = /data-slot="command-input"[\s\S]*?'([^']*)'/.exec(source)?.[1] ?? ''
+    for (const utility of neutralizers) {
+      expect(classes.split(/\s+/), `command-input dropped ${utility}`).toContain(utility)
+    }
+
+    const built = styleRules(await compileEntry(neutralizers))
+    for (const utility of neutralizers) {
+      expect(ruleFor(built, utility)?.declarations, utility).toMatch(/!important/)
+    }
   })
 
   it('never pulls in Preflight, whichever import brings it', () => {

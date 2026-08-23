@@ -1,15 +1,26 @@
 import { useState } from 'react'
-import { LoaderCircleIcon, NetworkIcon, StarIcon, Trash2Icon } from 'lucide-react'
+import { LoaderCircleIcon, StarIcon, Trash2Icon } from 'lucide-react'
+import { MapThumb } from './MapThumb'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from './ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { cn } from '../lib/utils'
 import { fromNow } from '../utils/relativeTime'
-import type { MapDoc } from '../mindmap/types'
+import type { MapSummary } from '../mindmap/types'
 
 /** A map with no title still needs something to click on. */
 const UNTITLED = 'Untitled map'
 
 export interface MapItemProps {
-  map: MapDoc
+  map: MapSummary
   /** A visitor who may not write: the row is drawn without its actions. */
   readOnly?: boolean
   /**
@@ -18,24 +29,26 @@ export interface MapItemProps {
    * locale) never has to reimplement the missing-timestamp fallback.
    */
   formatModified?: (modified: string) => string
-  onGo: (map: MapDoc) => void
-  onRemove: (map: MapDoc, done: () => void) => void
-  onStar: (map: MapDoc, done: () => void) => void
-  onUnstar: (map: MapDoc, done: () => void) => void
+  onGo: (map: MapSummary) => void
+  onRemove: (map: MapSummary, done: () => void) => void
+  onStar: (map: MapSummary, done: () => void) => void
+  onUnstar: (map: MapSummary, done: () => void) => void
 }
 
 /**
- * One row of the map list: icon tile, title, status, meta line and actions.
+ * One row of the map list: thumbnail, title, status, meta line and actions.
  *
  * The title's hit area is stretched over the whole row (`after:inset-0`), so
  * the row-wide hover highlight is honest — everything it covers opens the map
  * — while the accessibility tree still sees a single button. The action
  * buttons are `relative` so they stay on top of that overlay.
  *
- * The actions are always visible rather than revealed on hover: a hidden-until
- * -hover control is unreachable on a touch screen, and this row carries a
- * destructive one. They are muted at rest instead, so they read as secondary
- * to the title without disappearing.
+ * The actions fade in with the row: at rest the list is titles and dates, and
+ * only the row under the cursor offers anything to press. Hover is not the only
+ * way in, because a hidden-until-hover control is unreachable otherwise — the
+ * keyboard brings them back through `focus-within`, a touch screen never hides
+ * them (`pointer-coarse`), and one already working stays visible even if the
+ * cursor wanders off mid-request.
  */
 export function MapItem ({
   map,
@@ -48,30 +61,45 @@ export function MapItem ({
 }: MapItemProps) {
   const [loading, setLoading] = useState(false)
   const [starLoading, setStarLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const isTemplate = (map.meta?.template ?? '0')[0] === '1'
-  const nodes = map.content.length
+  const starLabel = isTemplate ? 'Make it a map' : 'Make it a template'
+  const nodes = map.nodes
   const updated =
     map.modified !== undefined && formatModified !== undefined
       ? formatModified(map.modified)
       : fromNow(map.modified)
 
   return (
-    <li className="border-b border-border last:border-b-0">
-      <div className="relative flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent focus-within:bg-accent">
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-          aria-hidden="true"
-        >
-          <NetworkIcon className="size-5" />
-        </div>
+    <li
+      className={cn(
+        'border-b border-border last:border-b-0',
+        // The highlight is a rounded pill inset in the row, so the hairlines
+        // that separate the rows end up framing it: one along its bottom, and
+        // the row above's along its top. Both step aside while a row is hovered
+        // or holds focus — the colour goes, not the width, so nothing shifts.
+        // A row cannot see the divider its predecessor draws, hence `:has()`.
+        'hover:border-transparent focus-within:border-transparent',
+        '[&:has(+li:hover)]:border-transparent',
+        '[&:has(+li:focus-within)]:border-transparent'
+      )}
+    >
+      <div className="group relative flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent focus-within:bg-accent">
+        <MapThumb preview={map.preview} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
             {/* `block` rather than the button's default `inline-flex`, so the
                 title truncates and stays a single text node — the button's
-                accessible name is the map's title, nothing else. */}
+                accessible name is the map's title, nothing else.
+
+                `hover:no-underline` because the hit area is the whole row: the
+                link variant's underline would appear with the cursor anywhere
+                in it, including over the timestamp and the actions. The row's
+                own highlight is the hover affordance, and it covers the same
+                ground the click does. */}
             <Button
               variant="link"
-              className="block h-auto min-w-0 shrink truncate p-0 text-left text-base font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg"
+              className="block h-auto min-w-0 shrink truncate p-0 text-left text-base font-semibold text-foreground hover:no-underline after:absolute after:inset-0 after:rounded-lg"
               onClick={() => onGo(map)}
             >
               {map.title || UNTITLED}
@@ -88,39 +116,88 @@ export function MapItem ({
           </span>
         </div>
         {!readOnly && (
-          <div className="relative flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={starLoading}
-              aria-label={isTemplate ? 'Make it a map' : 'Make it a template'}
-              title={isTemplate ? 'Make it a map' : 'Make it a template'}
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                setStarLoading(true)
-                ;(isTemplate ? onUnstar : onStar)(map, () => setStarLoading(false))
-              }}
-            >
-              {starLoading ? (
-                <LoaderCircleIcon className="animate-spin" />
-              ) : (
-                <StarIcon className={isTemplate ? 'fill-current' : ''} />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={loading}
-              aria-label="Remove map"
-              title="Remove map"
-              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => {
-                setLoading(true)
-                onRemove(map, () => setLoading(false))
-              }}
-            >
-              {loading ? <LoaderCircleIcon className="animate-spin" /> : <Trash2Icon />}
-            </Button>
+          <div
+            className={cn(
+              'relative flex shrink-0 items-center gap-1 transition-opacity',
+              'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+              // A coarse pointer has no hover to reveal them with.
+              'pointer-coarse:opacity-100',
+              // Losing sight of a request already in flight would read as the
+              // row having done nothing.
+              (loading || starLoading) && 'opacity-100'
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={starLoading}
+                  // The name must not depend on the tooltip being open.
+                  aria-label={starLabel}
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setStarLoading(true)
+                    ;(isTemplate ? onUnstar : onStar)(map, () => setStarLoading(false))
+                  }}
+                >
+                  {starLoading ? (
+                    <LoaderCircleIcon className="animate-spin" />
+                  ) : (
+                    <StarIcon className={isTemplate ? 'fill-current' : ''} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{starLabel}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={loading}
+                  aria-label="Remove map"
+                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirming(true)}
+                >
+                  {loading ? <LoaderCircleIcon className="animate-spin" /> : <Trash2Icon />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Remove map</TooltipContent>
+            </Tooltip>
+            {/* Deleting a map is permanent — there is no trash to fish it back
+                out of, and an export is a picture rather than a map. The bin
+                sits a few pixels from the star, and on a touch screen both are
+                permanently visible, so the only thing between a stray tap and
+                somebody's work is this dialog. */}
+            <Dialog open={confirming} onOpenChange={setConfirming}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Delete “{map.title || UNTITLED}”?</DialogTitle>
+                  <DialogDescription>
+                    {nodes === 1
+                      ? 'Its single node goes with it. '
+                      : `All ${nodes} of its nodes go with it. `}
+                    This cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setConfirming(false)}>
+                    Keep it
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setConfirming(false)
+                      setLoading(true)
+                      onRemove(map, () => setLoading(false))
+                    }}
+                  >
+                    Delete map
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
       </div>

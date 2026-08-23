@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<ruleset name="Mind Maps">
+	<description>
+		The plugin is what ships, so it is what is checked. The rest of this
+		package — Composer, the two test suites, wp-env, the packaging script —
+		is development scaffolding that never reaches a user's site.
+	</description>
+
+	<file>plugin</file>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+	<arg name="parallel" value="8"/>
+
+	<!-- The floor the plugin header promises. -->
+	<config name="testVersion" value="8.1-"/>
+	<config name="minimum_wp_version" value="6.3"/>
+
+	<rule ref="WordPress">
+		<!--
+			The plugin is written in functional PHP on purpose: namespaced
+			functions, no classes. WPCS's file-naming rule expects
+			`class-foo.php` conventions that do not apply, and its "one class
+			per file" companions have nothing to say here.
+		-->
+		<exclude name="WordPress.Files.FileName"/>
+		<!--
+			Yoda conditions are a house style this codebase does not keep, and
+			`declare(strict_types=1)` removes the assignment-in-condition class
+			of bug they exist to catch.
+		-->
+		<exclude name="WordPress.PHP.YodaConditions"/>
+	</rule>
+
+	<rule ref="PHPCompatibilityWP"/>
+
+	<!-- Everything the plugin prints is under one text domain. -->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="mind-maps"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- The prefixes every global symbol the plugin declares must carry. -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<!-- Namespaces and constants. `mind-maps` is the text domain and the
+			     directory slug, not a PHP prefix, so it is not listed here. -->
+			<property name="prefixes" type="array">
+				<element value="MindMaps"/>
+				<element value="MIND_MAPS"/>
+			</property>
+		</properties>
+	</rule>
+
+</ruleset>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { prepareTemplate, type TemplateDoc } from './index'
+import { builtinTemplate, listTemplates, prepareTemplate, type TemplateDoc } from './index'
 
 const tpl: TemplateDoc = {
   title: 'T {index}',
@@ -28,5 +28,55 @@ describe('prepareTemplate', () => {
     const out = prepareTemplate(tpl, { centerX: 0, centerY: 0 }, 1)
     expect(out.meta?.template).toBe('1')
     expect((out as TemplateDoc).description).toBe('desc')
+  })
+})
+
+describe('the built-ins', () => {
+  const keys = listTemplates().map((choice) => choice.key!)
+
+  it('offers the blank one first', () => {
+    // The admin bar's "+ New → Mind Map" creates this one without asking, and
+    // starting from nothing is the common case.
+    expect(keys[0]).toBe('blank')
+  })
+
+  it('are all resolvable, titled and described', () => {
+    for (const key of keys) {
+      const template = builtinTemplate(key)
+      expect(template, key).toBeTruthy()
+      expect(template.title, key).not.toBe('')
+      expect(template.description, key).toBeTruthy()
+    }
+  })
+
+  it('each start from one root that carries the {index}', () => {
+    for (const key of keys) {
+      const content = builtinTemplate(key).content
+      const roots = content.filter(([, node]) => node.parent === undefined)
+      expect(roots, key).toHaveLength(1)
+      expect(content[0][1].name, key).toContain('{index}')
+    }
+  })
+
+  it('hang every other node off a node that exists', () => {
+    // A dangling parent is dropped on the way to storage, which would quietly
+    // detach a branch of a template nobody thought to open first.
+    for (const key of keys) {
+      const content = builtinTemplate(key).content
+      const ids = new Set(content.map(([id, node]) => node.id ?? id))
+      for (const [, node] of content) {
+        if (node.parent === undefined) continue
+        expect(ids.has(node.parent), `${key}: ${String(node.parent)}`).toBe(true)
+      }
+    }
+  })
+
+  it('survive being prepared, which is the only way they are ever used', () => {
+    for (const key of keys) {
+      const out = prepareTemplate(builtinTemplate(key), { centerX: 500, centerY: 400 }, 2)
+      expect([out.content[0][1].x, out.content[0][1].y], key).toEqual([500, 400])
+      expect(out.title, key).not.toContain('{index}')
+      expect(out.content.every(([, node]) => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true)
+    }
   })
 })

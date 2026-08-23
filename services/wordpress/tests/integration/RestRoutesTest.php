@@ -146,6 +146,78 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( self::NS . '/maps', $routes );
 		$this->assertArrayHasKey( self::NS . '/maps/(?P<id>\d+)', $routes );
+		$this->assertArrayHasKey( self::NS . '/maps/(?P<id>\d+)/template', $routes );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * The template flag.
+	 * ------------------------------------------------------------------ */
+
+	public function test_flagging_a_template_touches_nothing_but_the_flag(): void {
+		$created = $this->create_as( $this->author );
+		$id      = (int) $created['id'];
+		$before  = \get_post( $id )->post_modified_gmt;
+
+		$response = $this->request( 'PUT', '/maps/' . $id . '/template', array( 'template' => true ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( array( 'id' => (string) $id, 'template' => true ), (array) $response->get_data() );
+
+		// The map itself is untouched: same content, and — because a star says
+		// nothing about the map — the same modified time, so a list ordered by
+		// it does not reshuffle when somebody stars a row.
+		$map = (array) $this->request( 'GET', '/maps/' . $id )->get_data();
+		$this->assertSame( '1', $map['meta']['template'] );
+		$this->assertCount( 2, $map['content'] );
+		$this->assertSame( $before, \get_post( $id )->post_modified_gmt );
+
+		$this->request( 'PUT', '/maps/' . $id . '/template', array( 'template' => false ) );
+		$this->assertSame(
+			'0',
+			( (array) $this->request( 'GET', '/maps/' . $id )->get_data() )['meta']['template']
+		);
+	}
+
+	/**
+	 * @dataProvider provide_non_boolean_flags
+	 *
+	 * @param mixed $flag Candidate flag value.
+	 */
+	public function test_a_flag_that_is_not_a_boolean_is_rejected( mixed $flag ): void {
+		$created = $this->create_as( $this->author );
+
+		$response = $this->request(
+			'PUT',
+			'/maps/' . (int) $created['id'] . '/template',
+			array( 'template' => $flag )
+		);
+
+		$this->assert_error( $response, 'mindmap_invalid_document', 400 );
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function provide_non_boolean_flags(): array {
+		return array(
+			'the string the flag is stored as' => array( '1' ),
+			'a number'                         => array( 1 ),
+			'null'                             => array( null ),
+			'an object'                        => array( array( 'on' => true ) ),
+		);
+	}
+
+	public function test_one_user_cannot_flag_anothers_map(): void {
+		$created = $this->create_as( $this->author );
+		\wp_set_current_user( $this->other_author );
+
+		$response = $this->request(
+			'PUT',
+			'/maps/' . (int) $created['id'] . '/template',
+			array( 'template' => true )
+		);
+
+		$this->assert_error( $response, 'mindmap_forbidden', 403 );
 	}
 
 	public function test_no_route_is_publicly_readable(): void {
@@ -172,11 +244,20 @@ final class RestRoutesTest extends WP_UnitTestCase {
 		$map_id = (int) $this->create_as( $this->author )['id'];
 		\wp_set_current_user( 0 );
 
+		// Reading one published map is the single thing a signed-out visitor
+		// may do, and it has a test of its own. Everything else is shut: no
+		// listing somebody's maps, and no writing of any kind.
 		$this->assert_error( $this->request( 'GET', '/maps' ), 'mindmap_forbidden', 403 );
-		$this->assert_error( $this->request( 'GET', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
 		$this->assert_error( $this->request( 'POST', '/maps', self::document() ), 'mindmap_forbidden', 403 );
 		$this->assert_error( $this->request( 'PUT', '/maps/' . $map_id, self::document() ), 'mindmap_forbidden', 403 );
+		$this->assert_error(
+			$this->request( 'PUT', '/maps/' . $map_id . '/template', array( 'template' => true ) ),
+			'mindmap_forbidden',
+			403
+		);
 		$this->assert_error( $this->request( 'DELETE', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
+
+		$this->assertSame( 'Plan', \get_post( $map_id )->post_title );
 	}
 
 	public function test_a_subscriber_cannot_create_a_map(): void {
@@ -190,14 +271,22 @@ final class RestRoutesTest extends WP_UnitTestCase {
 		$this->assertSame( 0, ( new \WP_Query( array( 'post_type' => PostType\POST_TYPE ) ) )->found_posts );
 	}
 
-	public function test_one_user_cannot_read_or_write_another_users_map(): void {
+	public function test_one_user_cannot_write_another_users_map(): void {
 		$map_id = (int) $this->create_as( $this->author )['id'];
 
 		\wp_set_current_user( $this->other_author );
 
-		$this->assert_error( $this->request( 'GET', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
+		// Reading is allowed — the map is published, and published maps are
+		// what the shortcode and the block put in front of readers. Writing is
+		// the part that stays the author's.
+		$this->assertSame( 200, $this->request( 'GET', '/maps/' . $map_id )->get_status() );
 		$this->assert_error(
 			$this->request( 'PUT', '/maps/' . $map_id, self::document( 'Hijacked' ) ),
+			'mindmap_forbidden',
+			403
+		);
+		$this->assert_error(
+			$this->request( 'PUT', '/maps/' . $map_id . '/template', array( 'template' => true ) ),
 			'mindmap_forbidden',
 			403
 		);
@@ -205,6 +294,43 @@ final class RestRoutesTest extends WP_UnitTestCase {
 
 		// And nothing changed.
 		$this->assertSame( 'Plan', \get_post( $map_id )->post_title );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Signed-out readers.
+	 * ------------------------------------------------------------------ */
+
+	public function test_a_signed_out_visitor_can_read_a_published_map(): void {
+		// The case the shortcode and the block exist for: a map embedded in a
+		// post, read by the people the post was written for.
+		$map_id = (int) $this->create_as( $this->author )['id'];
+
+		\wp_set_current_user( 0 );
+		$response = $this->request( 'GET', '/maps/' . $map_id );
+
+		$this->assertSame( 200, $response->get_status() );
+		$data = (array) $response->get_data();
+		$this->assertSame( 'Plan', $data['title'] );
+		$this->assertCount( 2, $data['content'] );
+	}
+
+	public function test_a_signed_out_visitor_cannot_read_an_unpublished_map(): void {
+		// A contributor's map is created as a draft, and a draft is not a
+		// thing anyone put in front of readers.
+		$map_id = (int) $this->create_as( $this->contributor )['id'];
+		$this->assertSame( 'draft', \get_post( $map_id )->post_status );
+
+		\wp_set_current_user( 0 );
+
+		$this->assert_error( $this->request( 'GET', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
+	}
+
+	public function test_one_user_still_cannot_read_anothers_draft(): void {
+		$map_id = (int) $this->create_as( $this->contributor )['id'];
+
+		\wp_set_current_user( $this->other_author );
+
+		$this->assert_error( $this->request( 'GET', '/maps/' . $map_id ), 'mindmap_forbidden', 403 );
 	}
 
 	public function test_an_editor_may_read_someone_elses_map(): void {

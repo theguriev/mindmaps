@@ -75,6 +75,12 @@ export function EdgeScene ({
       notchDirY={ty}
       hitPadding={5}
       cursor="pointer"
+      // The branch answers for the node it arrives at, so hovering anywhere
+      // along it brings up that node's controls — the "+" is reachable from
+      // the whole branch rather than only from the box at its end, and walking
+      // the cursor in along the curve never loses them on the way. `hitId` is
+      // read for hover alone; the click below still opens the branch editor.
+      hitId={String(edge.toID)}
       // Consume the press so an edge click doesn't fall through to the
       // background (which would start a marquee and clear the selection).
       onPointerDown={() => {}}

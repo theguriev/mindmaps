@@ -3,18 +3,16 @@ import { ChevronDownIcon, FolderOpenIcon, SearchIcon } from 'lucide-react'
 import { Logo } from './Logo'
 import { MapItem } from './MapItem'
 import { Templates } from './Templates'
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { Separator } from './ui/separator'
-import type { MapDoc } from '../mindmap/types'
-import type { TemplateDoc } from '../templates'
+import type { MapSummary } from '../mindmap/types'
+import type { TemplateChoice } from '../templates'
 
 export interface MapListProps {
-  maps: MapDoc[]
+  maps: MapSummary[]
   /** Offered by the "New" popover. */
-  templates: TemplateDoc[]
+  templates: TemplateChoice[]
   /**
    * A visitor who may not write. Creating a map is a write — without the
    * capability the request would be refused — so the affordance is absent
@@ -30,11 +28,11 @@ export interface MapListProps {
    * about to replace measures this element.
    */
   ref?: Ref<HTMLDivElement>
-  onGo: (map: MapDoc) => void
-  onRemove: (map: MapDoc, done: () => void) => void
-  onStar: (map: MapDoc, done: () => void) => void
-  onUnstar: (map: MapDoc, done: () => void) => void
-  onChooseTemplate: (template: TemplateDoc) => void
+  onGo: (map: MapSummary) => void
+  onRemove: (map: MapSummary, done: () => void) => void
+  onStar: (map: MapSummary, done: () => void) => void
+  onUnstar: (map: MapSummary, done: () => void) => void
+  onChooseTemplate: (template: TemplateChoice) => void
 }
 
 /**
@@ -78,12 +76,11 @@ export function MapList ({
   return (
     <div ref={ref} className="h-full overflow-auto">
       <div className="mx-auto my-6 w-[960px] max-w-[calc(100%-2rem)]">
-        <div className="flex items-center">
+        <div className="mb-4 flex items-center">
           {/* The heading names the product, so the mark is decorative. */}
           <Logo className="mr-3" alt="" />
           <h1 className="text-3xl font-bold">Mind maps</h1>
         </div>
-        <Separator className="my-4" />
         <div className="flex gap-2">
           <div className="relative flex-1">
             <SearchIcon
@@ -113,10 +110,11 @@ export function MapList ({
           )}
         </div>
         {notice}
-        <div className="mt-6 mb-1 flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Maps</h2>
-          <Badge variant="secondary">{filteredMaps.length}</Badge>
-        </div>
+        {/* No count beside the heading: the rows are right there, and the one
+            case where a number would say something the list does not — a filter
+            that matched nothing — is the case where it is replaced by a message
+            that says it in words. */}
+        <h2 className="mt-6 mb-1 text-sm font-semibold">Maps</h2>
         {filteredMaps.length > 0 ? (
           <ul className="flex list-none flex-col">
             {filteredMaps.map((map) => (

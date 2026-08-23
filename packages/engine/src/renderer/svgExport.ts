@@ -16,6 +16,14 @@ import type {
 import type { MarkdownLayout } from '../markdown/layout'
 import { bezierNotch, bezierTip } from './geometryUtils'
 
+/**
+ * Escapes a value on its way into the SVG.
+ *
+ * Applied to every interpolated string, not only to the ones an attacker can
+ * reach today. Colours come from a stored document, and a document is written
+ * through a validator that could always grow a hole; escaping here is a
+ * property of the serializer rather than a fact about this month's inputs.
+ */
 function esc (s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -42,7 +50,7 @@ export function sceneToSvg (
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(width)}" height="${n(height)}" ` +
     `viewBox="0 0 ${n(width)} ${n(height)}">` +
-    `<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${background}"/>` +
+    `<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${esc(background)}"/>` +
     body +
     '</svg>'
   )
@@ -83,18 +91,18 @@ function groupToSvg (node: SceneNode): string {
 
 function boxToSvg (p: BoxProps): string {
   if (p.hitOnly || (!p.fill && !p.stroke)) return ''
-  const fill = p.fill ? `fill="${p.fill}"` : 'fill="none"'
+  const fill = p.fill ? `fill="${esc(p.fill)}"` : 'fill="none"'
   const stroke = p.stroke
-    ? ` stroke="${p.stroke}" stroke-width="${p.strokeWidth ?? 1}"`
+    ? ` stroke="${esc(p.stroke)}" stroke-width="${p.strokeWidth ?? 1}"`
     : ''
   const rx = p.radius ? ` rx="${n(p.radius)}"` : ''
   return `<rect x="${n(p.x ?? 0)}" y="${n(p.y ?? 0)}" width="${n(p.width)}" height="${n(p.height)}"${rx} ${fill}${stroke}/>`
 }
 
 function discToSvg (p: DiscProps): string {
-  const fill = p.fill ? `fill="${p.fill}"` : 'fill="none"'
+  const fill = p.fill ? `fill="${esc(p.fill)}"` : 'fill="none"'
   const stroke = p.stroke
-    ? ` stroke="${p.stroke}" stroke-width="${p.strokeWidth ?? 1}"`
+    ? ` stroke="${esc(p.stroke)}" stroke-width="${p.strokeWidth ?? 1}"`
     : ''
   return `<circle cx="${n(p.x ?? 0)}" cy="${n(p.y ?? 0)}" r="${n(p.radius)}" ${fill}${stroke}/>`
 }
@@ -104,7 +112,7 @@ function bezierToSvg (p: BezierProps): string {
   const stroke = p.stroke ?? '#000'
   const d = `M ${n(p.x1)} ${n(p.y1)} C ${n(p.cx1)} ${n(p.cy1)} ${n(p.cx2)} ${n(p.cy2)} ${n(p.x2)} ${n(p.y2)}`
   const dash = p.dash ? ` stroke-dasharray="${n(w * 1.6)} ${n(w * 1.6)}"` : ''
-  let curve = `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="butt"${dash}/>`
+  let curve = `<path d="${d}" fill="none" stroke="${esc(stroke)}" stroke-width="${w}" stroke-linecap="butt"${dash}/>`
   if ((p.notchDepth ?? 0) > 0) {
     // Same wedge cut the canvas painter clips out: clip to a rect around the
     // whole curve minus the notch polygon (evenodd), so the background shows
@@ -129,7 +137,7 @@ function bezierToSvg (p: BezierProps): string {
   }
   if ((p.tipLength ?? 0) > 0) {
     const [ax, ay, tx, ty, bx, by] = bezierTip(p)
-    curve += `<path d="M ${n(ax)} ${n(ay)} L ${n(tx)} ${n(ty)} L ${n(bx)} ${n(by)} Z" fill="${stroke}"/>`
+    curve += `<path d="M ${n(ax)} ${n(ay)} L ${n(tx)} ${n(ty)} L ${n(bx)} ${n(by)} Z" fill="${esc(stroke)}"/>`
   }
   return curve
 }
@@ -139,8 +147,8 @@ function triangleToSvg (p: TriangleProps): string {
   const tip = p.pointRight ? half : -half
   const notch = p.notch ? ` L ${n(tip * p.notch)} 0` : ''
   const d = `M 0 ${n(-half)} L ${n(tip)} 0 L 0 ${n(half)}${notch} Z`
-  const fill = p.fill ? `fill="${p.fill}"` : 'fill="none"'
-  const stroke = p.stroke ? ` stroke="${p.stroke}"` : ''
+  const fill = p.fill ? `fill="${esc(p.fill)}"` : 'fill="none"'
+  const stroke = p.stroke ? ` stroke="${esc(p.stroke)}"` : ''
   const rot = p.rotation ? ` rotate(${n((p.rotation * 180) / Math.PI)})` : ''
   return `<path d="${d}"${stroke} ${fill} transform="translate(${n(p.x ?? 0)}, ${n(p.y ?? 0)})${rot}"/>`
 }
@@ -155,7 +163,7 @@ function plusToSvg (p: PlusIconProps): string {
     : `<path d="M ${n(-bar)} 0 L ${n(bar)} 0 M 0 ${n(-bar)} L 0 ${n(bar)}" stroke="#000" stroke-width="2"/>`
   return (
     `<g transform="translate(${n(p.x ?? 0)}, ${n(p.y ?? 0)})">` +
-    `<circle cx="0" cy="0" r="${n(r)}" fill="#fff" stroke="${color}"/>` +
+    `<circle cx="0" cy="0" r="${n(r)}" fill="#fff" stroke="${esc(color)}"/>` +
     bars +
     '</g>'
   )
@@ -166,7 +174,7 @@ function markdownToSvg (p: MarkdownProps): string {
   const parts: string[] = []
   for (const d of layout.decorations) {
     parts.push(
-      `<rect x="${n(d.x)}" y="${n(d.y)}" width="${n(d.width)}" height="${n(d.height)}" fill="${d.color}"/>`
+      `<rect x="${n(d.x)}" y="${n(d.y)}" width="${n(d.width)}" height="${n(d.height)}" fill="${esc(d.color)}"/>`
     )
   }
   for (const run of layout.runs) {
@@ -178,7 +186,7 @@ function markdownToSvg (p: MarkdownProps): string {
         : ''
     parts.push(
       `<text x="${n(run.x)}" y="${n(baseline)}" dominant-baseline="middle" ` +
-        `style="font: ${esc(run.font)}" fill="${run.color}"${deco}>${esc(run.text)}</text>`
+        `style="font: ${esc(run.font)}" fill="${esc(run.color)}"${deco}>${esc(run.text)}</text>`
     )
   }
   const opacity = p.opacity !== undefined && p.opacity !== 1 ? ` opacity="${p.opacity}"` : ''

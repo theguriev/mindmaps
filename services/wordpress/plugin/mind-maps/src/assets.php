@@ -16,6 +16,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Assets;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Render;
 use MindMaps\Rest;
 
@@ -25,9 +27,9 @@ const SCRIPT_HANDLE = 'mind-maps-app';
 /** Style handle prefix for the bundle's stylesheets. */
 const STYLE_HANDLE = 'mind-maps-app';
 
-/* -------------------------------------------------------------------------
- * Pure helpers.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// Pure helpers.
+// --------------------------------------------------------------------------
 
 /**
  * Pick the entry files out of a build manifest.
@@ -130,10 +132,13 @@ function string_list( mixed $value ): array {
  * @return array<string, mixed>
  */
 function boot_payload( string $root, string $nonce, ?string $map_id, bool $can_edit, string $locale ): array {
-	$payload = array(
-		'root'  => $root,
-		'nonce' => $nonce,
-	);
+	$payload = array( 'root' => $root );
+	// An empty nonce is left out rather than printed as `""`: there is nothing
+	// to authenticate for a visitor who cannot write, and the client already
+	// treats an absent nonce and an empty one the same way.
+	if ( '' !== $nonce ) {
+		$payload['nonce'] = $nonce;
+	}
 	if ( null !== $map_id && '' !== $map_id ) {
 		$payload['mapId'] = $map_id;
 	}
@@ -166,9 +171,9 @@ function holds_boot_script( mixed $lines ): bool {
 	return false;
 }
 
-/* -------------------------------------------------------------------------
- * WordPress shell.
- * ---------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
+// WordPress shell.
+// --------------------------------------------------------------------------
 
 /**
  * Absolute path of the plugin's `assets/` directory.
@@ -276,7 +281,7 @@ function enqueue( ?string $map_id = null, ?bool $can_edit = null ): void {
 	$writable = null === $can_edit ? default_can_edit( $map_id ) : $can_edit;
 	$payload  = boot_payload(
 		\untrailingslashit( \rest_url( Rest\REST_NAMESPACE ) ),
-		\wp_create_nonce( 'wp_rest' ),
+		rest_nonce(),
 		$map_id,
 		$writable,
 		\determine_locale()
@@ -284,6 +289,25 @@ function enqueue( ?string $map_id = null, ?bool $can_edit = null ): void {
 
 	$json = \wp_json_encode( $payload );
 	\wp_add_inline_script( SCRIPT_HANDLE, boot_script( \is_string( $json ) ? $json : '{}' ), 'before' );
+}
+
+/**
+ * The REST nonce for this visitor, or an empty string when there is nobody to
+ * mint one for.
+ *
+ * A nonce is only ever used to authenticate a write, and a signed-out visitor
+ * cannot write anything. Printing one for them is not merely useless — it is
+ * the one part of this payload that expires, and page caches outlive it. On a
+ * host that caches anonymous HTML for longer than the nonce window (LiteSpeed
+ * defaults to a week; edge caches that purge on content change rather than on
+ * a clock never expire it at all), every anonymous reader would download the
+ * bundle and be told their session had expired, with a reload that cannot
+ * help because the cache serves the same stale value.
+ *
+ * Reading a published map needs no nonce, so an empty string costs nothing.
+ */
+function rest_nonce(): string {
+	return \is_user_logged_in() ? (string) \wp_create_nonce( 'wp_rest' ) : '';
 }
 
 /**

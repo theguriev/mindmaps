@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Map persistence backends: the MapStore contract with localStorage and WordPress REST implementations.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./document": "./src/document.ts"
   },
   "files": ["src"],
   "scripts": {

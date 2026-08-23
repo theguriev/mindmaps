@@ -70,6 +70,20 @@ export interface PathEdge {
 
 export type Adjacency = Map<NodeId, RawNode>
 
+/**
+ * A map reduced to points and the lines between them — see `mapPreview()` in
+ * `./preview` for how one is built and why it is shaped like this.
+ */
+export interface MapPreview {
+  /** Extent of the points; one of the two is always `PREVIEW_SPAN`. */
+  width: number
+  height: number
+  /** Flat `x, y` pairs — `points[2 * i]` and `points[2 * i + 1]`. */
+  points: number[]
+  /** `parents[i]` is the index of `i`'s parent, or `-1`. Always `< i`. */
+  parents: number[]
+}
+
 /** A persisted map document. */
 export interface MapDoc {
   id: NodeId
@@ -81,4 +95,27 @@ export interface MapDoc {
   /** Schema version of `content`. Absent on documents written before
    *  versioning existed; stores stamp the current version on read. */
   version?: number
+}
+
+/**
+ * A map as a list row: everything about it except the map.
+ *
+ * Listing and opening want different things, and conflating them made the
+ * cheap operation pay for the expensive one — a screen showing a hundred
+ * titles downloaded a hundred whole documents to render them. A summary
+ * carries what a row draws and nothing else, so `content` is a thing you ask
+ * for when you open a map. Its own type, rather than a `MapDoc` with holes in
+ * it, so anything that reaches for content it was never given is a compile
+ * error and not an empty map saved over a full one.
+ */
+export interface MapSummary {
+  id: NodeId
+  title: string
+  /** The map's node count. Whole, even when the preview was capped. */
+  nodes: number
+  /** The map's shape, or null for one with nothing to draw. */
+  preview: MapPreview | null
+  modified?: string
+  date?: string
+  meta?: { template?: string }
 }

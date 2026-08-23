@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Repository;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Document;
 use MindMaps\PostType;
 use WP_Error;
@@ -239,6 +241,23 @@ function modified_at( WP_Post $post ): string {
  */
 function template_flag( int $post_id ): string {
 	return '1' === (string) \get_post_meta( $post_id, PostType\META_TEMPLATE, true ) ? '1' : '0';
+}
+
+/**
+ * Mark a map as a template, or stop.
+ *
+ * Meta only, and deliberately not `wp_update_post()`: starring a map says
+ * nothing about the map, so it has no business moving `post_modified` and
+ * reshuffling a list ordered by it. The narrow write is also the point — the
+ * caller is a list row, which holds no document, and routing this through the
+ * full update meant sending back whatever content that row happened to be
+ * holding and reverting anything edited since.
+ *
+ * @param int  $post_id  Map post id.
+ * @param bool $template Whether it is a template.
+ */
+function set_template( int $post_id, bool $template ): void {
+	\update_post_meta( $post_id, PostType\META_TEMPLATE, $template ? '1' : '0' );
 }
 
 /**

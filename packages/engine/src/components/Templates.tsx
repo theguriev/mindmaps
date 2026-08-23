@@ -6,7 +6,7 @@ import {
   CommandItem,
   CommandList
 } from './ui/command'
-import type { TemplateDoc } from '../templates'
+import type { TemplateChoice } from '../templates'
 
 /** Item values are `index::title` — the index prefix keeps values unique when
  *  two templates share a title, and matching starts after the first `::` so a
@@ -25,8 +25,8 @@ export function Templates ({
   templates,
   onChoose
 }: {
-  templates: TemplateDoc[]
-  onChoose: (template: TemplateDoc) => void
+  templates: TemplateChoice[]
+  onChoose: (template: TemplateChoice) => void
 }) {
   return (
     <div>

@@ -78,4 +78,61 @@ describe('createLocalStore', () => {
       createLocalStore({ storage: failing }).save('x', { id: 'x', title: '', content: [] })
     ).rejects.toBeInstanceOf(MapStoreError)
   })
+
+  it('lists summaries, not the maps themselves', async () => {
+    storage.setItem(
+      PREFIX + 'a',
+      JSON.stringify({
+        id: 'a',
+        title: 'A',
+        modified: '2026-01-02T00:00:00Z',
+        content: [
+          ['r', { name: 'root', x: 0, y: 0 }],
+          ['c', { name: 'child', x: 100, y: 0, parent: 'r' }]
+        ]
+      })
+    )
+
+    const [summary] = await store().list()
+
+    expect(summary).toEqual({
+      id: 'a',
+      title: 'A',
+      nodes: 2,
+      preview: { width: 255, height: 0, points: [0, 0, 255, 0], parents: [-1, 0] },
+      modified: '2026-01-02T00:00:00Z'
+    })
+    expect(summary).not.toHaveProperty('content')
+  })
+
+  it('flips the template flag on the stored map, not on a copy of it', async () => {
+    // Somebody edits the map in another tab between the list loading and the
+    // star being clicked. Writing back the row's own snapshot would undo them.
+    storage.setItem(
+      PREFIX + 'a',
+      JSON.stringify({ id: 'a', title: 'A', content: [['r', { name: 'root', x: 0, y: 0 }]] })
+    )
+    await store().list()
+    storage.setItem(
+      PREFIX + 'a',
+      JSON.stringify({
+        id: 'a',
+        title: 'A',
+        content: [
+          ['r', { name: 'root', x: 0, y: 0 }],
+          ['new', { name: 'added elsewhere', x: 50, y: 50, parent: 'r' }]
+        ]
+      })
+    )
+
+    await store().setTemplate('a', true)
+
+    const stored = JSON.parse(storage.getItem(PREFIX + 'a')!)
+    expect(stored.meta).toEqual({ template: '1' })
+    expect(stored.content).toHaveLength(2)
+  })
+
+  it('refuses to flag a map that is not there', async () => {
+    await expect(store().setTemplate('missing', true)).rejects.toBeInstanceOf(MapStoreError)
+  })
 })

@@ -15,8 +15,10 @@ import '@mindmaps/engine/styles.css'
 />
 ```
 
-The host owns loading and persistence; the editor owns everything between. A
-`Promise` returned from `onSave` drives the toolbar's saving/failed states, so a
+The host owns loading and persistence; the editor owns everything between.
+`onSave` is called on its own, a beat after the map stops changing and once
+more when the editor closes — there is no save button. The `Promise` it returns
+drives the "Saving…" and "Not saved — retry" states beside the title, so a
 network backend needs no extra UI.
 
 ## Layout
@@ -26,7 +28,7 @@ network backend needs no extra UI.
 | `src/renderer/` | The custom `react-reconciler` host config, the canvas painter, hit-testing and the SVG exporter. |
 | `src/markdown/` | Markdown → canvas text: block/inline parsing, measurement, soft wrapping, painting. |
 | `src/mindmap/` | The domain: adjacency map, undo/redo, collapse, clipboard, geometry. |
-| `src/components/` | The scene components and the DOM chrome (toolbars, palettes, overlays). |
+| `src/components/` | The scene components and the DOM chrome (floating islands, palettes, overlays). |
 | `src/editor/` | `MindMapEditor` — the whole experience wired together. |
 | `src/templates/` | Built-in starter maps. |
 

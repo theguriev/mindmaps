@@ -71,10 +71,19 @@ function CommandInput ({
       className="flex h-9 items-center gap-2 border-b px-3"
     >
       <SearchIcon className="size-4 shrink-0 opacity-50" />
+      {/* `border-0`, `px-0` and `shadow-none` state values this field would
+          otherwise simply not set. The wrapper draws the only line here, but a
+          host's stylesheet reaches a bare `input` by element selector — in the
+          WordPress admin `forms.css` gives one a border, horizontal padding and
+          a 2px focus shadow in the admin colour, which framed this field and
+          spilled over the wrapper's rule below it. Nothing declared is nothing
+          to outrank; saying the neutral values out loud puts them in the
+          embed's `important` utility layer, where the host cannot reach them.
+          Everywhere else they are what the field already looked like. */}
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          'placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
+          'placeholder:text-muted-foreground flex h-10 w-full rounded-md border-0 bg-transparent px-0 py-3 text-sm shadow-none outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
           className
         )}
         {...props}

@@ -10,4 +10,11 @@ export { createLocalStore, PREFIX } from './local'
 export type { LocalStoreOptions } from './local'
 export { createWpStore } from './wp'
 export type { WpStoreOptions } from './wp'
-export { DOC_VERSION, parseContent, parseMapDoc, toWire } from './document'
+export {
+  DOC_VERSION,
+  parseContent,
+  parseMapDoc,
+  parseMapSummary,
+  parsePreview,
+  toWire
+} from './document'

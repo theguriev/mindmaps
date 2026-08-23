@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Admin;
 
+defined( 'ABSPATH' ) || exit;
+
 use MindMaps\Assets;
 use MindMaps\Render;
 
@@ -26,6 +28,9 @@ const MENU_CAPABILITY = 'edit_posts';
 
 /** Query parameter naming the open map, as `post.php` uses `post`. */
 const MAP_QUERY_ARG = 'map';
+
+/** Query parameter asking the screen to start a blank map. */
+const NEW_QUERY_ARG = 'new';
 
 /**
  * The `$hook_suffix` WordPress gives a top-level page with our slug.
@@ -44,9 +49,31 @@ function is_map_screen( mixed $hook_suffix ): bool {
 }
 
 /**
+ * The two query parameters this screen owns, read one key at a time.
+ *
+ * Never the whole superglobal: the screen has exactly two inputs, and handing
+ * an unbounded array to a pure helper means nothing downstream can be sure
+ * what it was given. Both are read as text and validated by the functions
+ * below — one to a post id, the other to a flag.
+ *
+ * @return array<string, string>
+ */
+function screen_query(): array {
+	$query = array();
+	foreach ( array( MAP_QUERY_ARG, NEW_QUERY_ARG ) as $key ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a read-only screen selector; nothing here changes state.
+		if ( isset( $_GET[ $key ] ) && \is_scalar( $_GET[ $key ] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- same read.
+			$query[ $key ] = \sanitize_text_field( \wp_unslash( (string) $_GET[ $key ] ) );
+		}
+	}
+	return $query;
+}
+
+/**
  * The map id the screen was opened with, or null for the list view.
  *
- * @param array<string, mixed> $query Typically `$_GET`.
+ * @param array<string, mixed> $query From `screen_query()`.
  */
 function requested_map_id( array $query ): ?string {
 	$raw = $query[ MAP_QUERY_ARG ] ?? null;
@@ -97,8 +124,68 @@ function menu_icon(): string {
 
 	$markup = \file_get_contents( $svg ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local plugin asset, not a remote request.
 	return \is_string( $markup )
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- a data URI for a file shipped in this plugin, which is the only form WordPress sizes for the menu. Nothing is decoded and nothing is executed.
 		? 'data:image/svg+xml;base64,' . \base64_encode( $markup )
 		: 'dashicons-share-alt';
+}
+
+/**
+ * The URL of the screen, optionally asking it to start a new map.
+ *
+ * @param bool $start_new Create a blank map on arrival and open it.
+ */
+function screen_url( bool $start_new = false ): string {
+	$args = array( 'page' => MENU_SLUG );
+	if ( $start_new ) {
+		$args[ NEW_QUERY_ARG ] = '1';
+	}
+	return \add_query_arg( $args, \admin_url( 'admin.php' ) );
+}
+
+/**
+ * Whether a query asks for a new map.
+ *
+ * @param array<string, mixed> $query Typically `$_GET`.
+ */
+function wants_new_map( array $query ): bool {
+	$raw = $query[ NEW_QUERY_ARG ] ?? null;
+	return \is_scalar( $raw ) && \in_array( (string) $raw, array( '1', 'true' ), true );
+}
+
+/**
+ * Add "Mind Map" to the admin bar's "+ New" menu. Hooked to `admin_bar_menu`.
+ *
+ * Core builds that menu from post types with `show_in_admin_bar`, and links
+ * them to `post-new.php` — the editor this plugin deliberately does not use
+ * (the post type is `show_ui: false`). So the node is added by hand, pointing
+ * at the screen that does own map creation.
+ *
+ * The link itself writes nothing — a plain `GET` a browser may prefetch has no
+ * business creating content. It carries `new=1`, and the screen makes the map
+ * through the REST API, with its nonce, once it has loaded.
+ *
+ * @param \WP_Admin_Bar $bar The admin bar being built.
+ */
+function register_admin_bar( \WP_Admin_Bar $bar ): void {
+	if ( ! \current_user_can( MENU_CAPABILITY ) ) {
+		return;
+	}
+
+	// Without the parent the node would be dropped silently — that happens when
+	// the user may create nothing else, and core omits the whole "+ New" menu.
+	$parent = null === $bar->get_node( 'new-content' ) ? null : 'new-content';
+	if ( null === $parent ) {
+		return;
+	}
+
+	$bar->add_node(
+		array(
+			'parent' => $parent,
+			'id'     => 'new-mind-map',
+			'title'  => \__( 'Mind Map', 'mind-maps' ),
+			'href'   => screen_url( true ),
+		)
+	);
 }
 
 /**
@@ -115,8 +202,7 @@ function enqueue_admin( mixed $hook_suffix = '' ): void {
 	// screen, not that they may write whichever map `?map=` names. Forcing
 	// `true` handed anyone with `edit_posts` a fully writable editor over a map
 	// every REST write would then refuse. `default_can_edit()` decides.
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen selector, no state change.
-	Assets\enqueue( requested_map_id( \wp_unslash( $_GET ) ) );
+	Assets\enqueue( requested_map_id( screen_query() ) );
 
 	enqueue_screen_style();
 }
@@ -148,8 +234,8 @@ function render_page(): void {
 		\wp_die( \esc_html__( 'You are not allowed to manage mind maps.', 'mind-maps' ) );
 	}
 
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only screen selector, no state change.
-	$map_id = requested_map_id( \wp_unslash( $_GET ) );
+	$query  = screen_query();
+	$map_id = requested_map_id( $query );
 
 	// No `.wrap`: its margins are half the grey this screen is getting rid of,
 	// and WordPress moves admin notices inside it (`common.js` anchors on
@@ -159,10 +245,13 @@ function render_page(): void {
 	echo '<h1 class="screen-reader-text">' . \esc_html__( 'Mind Maps', 'mind-maps' ) . '</h1>';
 	echo '<hr class="wp-header-end">';
 
-	// mount_markup() escapes everything it emits.
-	echo Render\mount_markup( // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped markup.
+	$start_new = wants_new_map( $query );
+
+	$markup = Render\mount_markup(
 		array(
 			'id'        => null === $map_id ? 0 : (int) $map_id,
+			// "+ New → Mind Map" in the admin bar lands here.
+			'new'       => $start_new,
 			// The screen's stylesheet sizes the canvas against the viewport; an
 			// inline `min-height` would outrank it and bring the grey back on a
 			// short window.
@@ -173,4 +262,8 @@ function render_page(): void {
 			'map_param' => MAP_QUERY_ARG,
 		)
 	);
+
+	// `mount_markup()` escapes every value it interpolates; the string it
+	// returns is markup by design.
+	echo $markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped markup.
 }

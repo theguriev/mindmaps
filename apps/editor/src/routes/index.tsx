@@ -1,9 +1,12 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import {
   MapList,
+  builtinTemplate,
   listTemplates,
   prepareTemplate,
-  type MapDoc,
+  templateFromDoc,
+  type MapSummary,
+  type TemplateChoice,
   type TemplateDoc
 } from '@mindmaps/engine'
 import { store } from '../store'
@@ -23,7 +26,7 @@ function center () {
 function Home () {
   const navigate = useNavigate()
   const router = useRouter()
-  const maps = Route.useLoaderData() as MapDoc[]
+  const maps = Route.useLoaderData() as MapSummary[]
 
   // Re-run the route loader after a mutation instead of holding a second copy
   // of the list in component state.
@@ -31,22 +34,31 @@ function Home () {
 
   const templates = listTemplates(maps)
 
-  const go = (map: MapDoc) =>
+  const go = (map: { id: MapSummary['id'] }) =>
     navigate({ to: '/map/$id', params: { id: String(map.id) } })
 
-  const remove = async (map: MapDoc, done: () => void) => {
+  const remove = async (map: MapSummary, done: () => void) => {
     await store.remove([String(map.id)])
     await reload()
     done()
   }
 
-  const setTemplateFlag = async (map: MapDoc, template: string, done: () => void) => {
-    await store.save(String(map.id), { ...map, meta: { template } })
+  const setTemplateFlag = async (map: MapSummary, template: boolean, done: () => void) => {
+    await store.setTemplate(String(map.id), template)
     await reload()
     done()
   }
 
-  const chooseTemplate = async (template: TemplateDoc) => {
+  // A choice names a template; only the one that was picked is fetched.
+  const resolveTemplate = async (choice: TemplateChoice): Promise<TemplateDoc | null> => {
+    if (choice.key !== undefined) return builtinTemplate(choice.key)
+    const doc = await store.get(String(choice.id))
+    return doc === null ? null : templateFromDoc(doc)
+  }
+
+  const chooseTemplate = async (choice: TemplateChoice) => {
+    const template = await resolveTemplate(choice)
+    if (template === null) return
     const { centerX, centerY } = center()
     const doc = await store.create(
       prepareTemplate(template, { centerX, centerY }, maps.length + 1)
@@ -60,8 +72,8 @@ function Home () {
       templates={templates}
       onGo={go}
       onRemove={remove}
-      onStar={(m, done) => setTemplateFlag(m, '1', done)}
-      onUnstar={(m, done) => setTemplateFlag(m, '0', done)}
+      onStar={(m, done) => setTemplateFlag(m, true, done)}
+      onUnstar={(m, done) => setTemplateFlag(m, false, done)}
       onChooseTemplate={chooseTemplate}
     />
   )

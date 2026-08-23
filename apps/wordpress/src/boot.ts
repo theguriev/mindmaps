@@ -147,6 +147,38 @@ export function resolveMapParam (
 }
 
 /**
+ * The query parameter the plugin uses to ask for a new map.
+ *
+ * A one-shot instruction: once the map exists the address must lose it, or a
+ * reload would ask for another one.
+ */
+export const NEW_QUERY_PARAM = 'new'
+
+/**
+ * Whether this mount was asked to start a new map.
+ *
+ * Set by the admin bar's "+ New → Mind Map". The link itself is a plain `GET`
+ * and writes nothing — one a browser may prefetch must not — so the app makes
+ * the blank map on arrival, through the REST API with its nonce.
+ */
+export function resolveStartNew (attribute: string | null | undefined): boolean {
+  if (attribute === undefined || attribute === null) return false
+  return ['1', 'true'].includes(attribute.trim().toLowerCase())
+}
+
+/**
+ * Whether a mount draws the editor's controls.
+ *
+ * Absent means yes: the admin screen and every embed written before this
+ * existed expect them, and a missing attribute must not silently strip a
+ * toolbar. Only the documented "off" values turn them off.
+ */
+export function resolveControls (attribute: string | null | undefined): boolean {
+  if (attribute === undefined || attribute === null) return true
+  return !['0', 'false', 'no'].includes(attribute.trim().toLowerCase())
+}
+
+/**
  * The same URL, showing `mapId` — or the list, when it is undefined.
  *
  * Everything else in the address is preserved: in the admin the screen itself
@@ -164,6 +196,13 @@ export function mapUrl (
   const url = new URL(current, 'http://mind-maps.invalid')
   if (mapId === undefined) url.searchParams.delete(param)
   else url.searchParams.set(param, mapId)
+  return url.pathname + url.search + url.hash
+}
+
+/** The same URL without `param` — relative, like `mapUrl`. */
+export function withoutParam (current: string, param: string): string {
+  const url = new URL(current, 'http://mind-maps.invalid')
+  url.searchParams.delete(param)
   return url.pathname + url.search + url.hash
 }
 

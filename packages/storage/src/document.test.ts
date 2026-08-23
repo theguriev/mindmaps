@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DOC_VERSION, parseContent, parseMapDoc, toWire } from './document'
+import {
+  DOC_VERSION,
+  parseContent,
+  parseMapDoc,
+  parseMapSummary,
+  parsePreview,
+  toWire
+} from './document'
 
 const node = (over: Record<string, unknown> = {}) => ({
   name: 'n',
@@ -105,5 +112,107 @@ describe('toWire', () => {
       meta: undefined,
       version: DOC_VERSION
     })
+  })
+})
+
+describe('parsePreview', () => {
+  const preview = { width: 255, height: 100, points: [0, 0, 255, 100], parents: [-1, 0] }
+
+  it('accepts a well-formed drawing', () => {
+    expect(parsePreview(preview)).toEqual(preview)
+  })
+
+  it('refuses a parent that is not already drawn', () => {
+    // The renderer walks these as indices with no guards, on the promise that
+    // a parent always comes first. Nothing off the wire gets to break it.
+    expect(parsePreview({ ...preview, parents: [0, 0] })).toBeNull()
+    expect(parsePreview({ ...preview, parents: [-1, 5] })).toBeNull()
+    expect(parsePreview({ ...preview, parents: [-1, -2] })).toBeNull()
+  })
+
+  it('refuses a shape that does not describe points', () => {
+    expect(parsePreview({ ...preview, points: [0, 0, 255] })).toBeNull()
+    expect(parsePreview({ ...preview, points: [0, 0, 255, Number.NaN] })).toBeNull()
+    expect(parsePreview({ ...preview, width: 'wide' })).toBeNull()
+    expect(parsePreview({ points: [], parents: [] })).toBeNull()
+    expect(parsePreview(null)).toBeNull()
+  })
+})
+
+describe('parseMapSummary', () => {
+  it('believes a backend that sends a summary', () => {
+    const summary = parseMapSummary({
+      id: '7',
+      title: 'T',
+      nodes: 42,
+      preview: { width: 255, height: 0, points: [0, 0], parents: [-1] },
+      modified: '2026-01-01T00:00:00Z',
+      meta: { template: '1' }
+    })
+
+    expect(summary).toEqual({
+      id: '7',
+      title: 'T',
+      nodes: 42,
+      preview: { width: 255, height: 0, points: [0, 0], parents: [-1] },
+      modified: '2026-01-01T00:00:00Z',
+      meta: { template: '1' }
+    })
+  })
+
+  it('projects the content itself when a backend still sends whole documents', () => {
+    // The branch that lets a new client talk to an old server.
+    const summary = parseMapSummary({
+      id: '7',
+      title: 'T',
+      content: [
+        ['a', { name: 'a', x: 0, y: 0 }],
+        ['b', { name: 'b', x: 100, y: 0, parent: 'a' }]
+      ]
+    })
+
+    expect(summary?.nodes).toBe(2)
+    expect(summary?.preview).toEqual({ width: 255, height: 0, points: [0, 0, 255, 0], parents: [-1, 0] })
+  })
+
+  it('costs a bad drawing its thumbnail and not its row', () => {
+    const summary = parseMapSummary({ id: '7', title: 'T', nodes: 3, preview: { parents: 'nope' } })
+
+    expect(summary).toEqual({ id: '7', title: 'T', nodes: 3, preview: null })
+  })
+
+  it('needs an id, and nothing else', () => {
+    expect(parseMapSummary({ title: 'T' })).toBeNull()
+    expect(parseMapSummary(null)).toBeNull()
+    expect(parseMapSummary({}, 'fallback')?.id).toBe('fallback')
+  })
+})
+
+describe('the stroke colour', () => {
+  const node = (stroke: unknown) => ({ name: 'n', x: 0, y: 0, stroke })
+
+  it('keeps the shapes the editor emits', () => {
+    for (const colour of ['#fff', '#ffff', '#00ff00', '#00ff0080', 'black', 'currentColor']) {
+      const parsed = parseContent([['a', node(colour)]])
+      expect(parsed?.[0][1].stroke, colour).toBe(colour)
+    }
+  })
+
+  it('drops anything that could close an SVG attribute', () => {
+    // The colour is written into an attribute by the exporter, so a string
+    // that can end one has no business being stored. The node survives; it
+    // just takes its default colour.
+    for (const colour of [
+      '#000" /><script>alert(1)</script><path d="',
+      'red;background:url(x)',
+      'url(#x)',
+      'rgb(0,0,0)',
+      42,
+      null
+    ]) {
+      const parsed = parseContent([['a', node(colour)]])
+      expect(parsed, String(colour)).toHaveLength(1)
+      expect(parsed?.[0][1].stroke, String(colour)).toBeUndefined()
+    }
   })
 })

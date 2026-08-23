@@ -129,7 +129,12 @@ export function TextEditorOverlay ({
           minHeight: EDITOR_MIN_H
         }}
         value={node.name}
-        className="box-border block resize-none rounded-md border-2 border-foreground bg-background p-2.5 text-sm leading-normal outline-none"
+        // `shadow-none` for the same reason the command input says it: a host
+        // reaches a bare `textarea` by element selector, and the WordPress
+        // admin puts a focus halo on one — which sat around this editor the
+        // whole time somebody was typing in it. The border here is the node's
+        // own, and it is the only edge this box should have.
+        className="box-border block resize-none rounded-md border-2 border-foreground bg-background p-2.5 text-sm leading-normal shadow-none outline-none"
         onChange={(e) => onInput(e.target.value)}
         onClick={(e) => e.stopPropagation()}
       />

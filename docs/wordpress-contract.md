@@ -44,10 +44,19 @@ Namespace `mindmaps/v1`, i.e. `\<site\>/wp-json/mindmaps/v1/…`.
 | POST | `/maps` | `MapDoc` without a meaningful `id` | `MapDoc` |
 | GET | `/maps/<id>` | — | `MapDoc` |
 | PUT | `/maps/<id>` | `MapDoc` | `MapDoc` |
+| PUT | `/maps/<id>/template` | `{ "template": true }` | `{ "id": "<id>", "template": true }` |
 | DELETE | `/maps/<id>` | — | `{ "deleted": true, "id": "<id>" }` |
 
-`PUT` is a full replace and there is no `PATCH`: the route registers `PUT`
-alone, so a partial body cannot be mistaken for a whole document.
+`PUT /maps/<id>` is a full replace and there is no `PATCH`: the route
+registers `PUT` alone, so a partial body cannot be mistaken for a whole
+document.
+
+`PUT /maps/<id>/template` exists because of that. Marking a map as a template
+is one bit, and the thing that sets it is a list row — which holds a title and
+a picture, not a document, and so has nothing to replace the map with. It
+writes post meta only: `template` must be a JSON boolean (`"1"` is a 400), the
+map's content is untouched, and `post_modified` does not move, so a list
+ordered by it does not reshuffle when somebody stars a row.
 
 `MapDoc` on the wire:
 
@@ -73,9 +82,20 @@ Cookie authentication plus the standard REST nonce: the plugin prints
 
 | Route | Capability |
 | --- | --- |
-| GET `/maps`, GET `/maps/<id>` | `read` + the map must be readable by the user (own map, or `edit_others_posts`) |
+| GET `/maps` | `read` + the list is scoped to the caller's own maps, or everyone's with `edit_others_posts` |
+| GET `/maps/<id>` | **published maps: anyone, signed in or not.** Otherwise `read` + own map, or `edit_others_posts` |
 | POST `/maps` | `edit_posts` |
-| PUT/DELETE `/maps/<id>` | `edit_post` / `delete_post` for that post |
+| PUT `/maps/<id>`, PUT `/maps/<id>/template` | `edit_post` for that post |
+| DELETE `/maps/<id>` | `delete_post` for that post |
+
+Reading a published map needs no account. That is what makes the shortcode and
+the block worth having — a map put into a post is meant to be seen by whoever
+reads the post, and most of them are not signed in — and it is what `publish`
+already means for the post a map is stored in. It grants reading only: writing
+still needs `edit_post`, a signed-out visitor has no usable nonce, and the app
+puts such an embed in read-only mode. Nothing else opens up: `GET /maps` still
+refuses a signed-out caller outright, so no one can enumerate a site's maps,
+and a draft, pending or private map stays with its author.
 
 A new map is created as `publish` when its creator has `publish_posts` and as
 `draft` otherwise. Contributors have `edit_posts` but not `publish_posts`, and
@@ -125,7 +145,9 @@ never inherits from `window.mindMapsBoot`:
 | --- | --- |
 | `data-map-id` | **Always emitted.** The map's id, or the **empty string** meaning "no map — show the list" |
 | `data-can-edit` | `"1"` or `"0"`, resolved per mount from the viewer's `edit_post` on that map (or `edit_posts` for a list mount) |
+| `data-controls` | `"0"` on an embed that wants the map and nothing over it — no title, no buttons, no zoom, no read-only badge. Absent means the controls are drawn. A map with no zoom control arrives framed on the whole map instead of at 100%. |
 | `data-map-param` | Present **only on a mount that owns its page's URL** — the admin screen, where it is `map`. Names the query parameter the open map lives in |
+| `data-new` | `"1"` when the visitor arrived from the admin bar's "+ New → Mind Map". The mount creates a blank map through the REST API and opens it, then drops the `new` parameter from the address so a reload cannot create a second one |
 
 A mount naming a `data-map-param` is a *routed* mount: opening a map rewrites
 that parameter, so the address identifies the map the way `post.php?post=1`

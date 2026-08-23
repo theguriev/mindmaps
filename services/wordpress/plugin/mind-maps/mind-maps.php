@@ -1,16 +1,16 @@
 <?php
 /**
  * Plugin Name:       Mind Maps
- * Plugin URI:        https://github.com/eugen/mind-maps
+ * Plugin URI:        https://github.com/theguriev/mindmaps
  * Description:       Embed and edit canvas mind maps in WordPress. Maps live in a custom post type and are served through the plugin's own REST namespace.
  * Version:           1.1.0
  * Requires at least: 6.3
  * Requires PHP:      8.1
  * Author:            Eugen Guriev
+ * Author URI:        https://profiles.wordpress.org/gurievcreative/
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       mind-maps
- * Domain Path:       /languages
  *
  * @package MindMaps
  */

@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+import { scopeCss } from './src/scopeCss'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
@@ -9,13 +10,36 @@ import tailwindcss from '@tailwindcss/vite'
  * at names the PHP can hard-code — `dist/index.js` and `dist/index.css` — plus a
  * `dist/manifest.json` the plugin reads for cache-busting metadata.
  */
+/**
+ * Confines every selector in the emitted stylesheet to the embed.
+ *
+ * Runs after Tailwind, on the finished CSS, because that is the only point at
+ * which every utility exists. See `src/scopeCss.ts` for why it is needed and
+ * why `:where()` makes it safe; `src/styles.test.ts` is what would notice if
+ * it stopped running.
+ */
+function confineStylesToTheEmbed (): Plugin {
+  return {
+    name: 'mind-maps:confine-styles',
+    enforce: 'post',
+    generateBundle (_options, bundle) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === 'asset' && file.fileName.endsWith('.css')) {
+          file.source = scopeCss(String(file.source))
+        }
+      }
+    }
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     // React Compiler auto-memoizes components/hooks. The oxc-based React plugin
     // doesn't run Babel, so the compiler is applied via @rolldown/plugin-babel.
     babel({ presets: [reactCompilerPreset()] }),
-    tailwindcss()
+    tailwindcss(),
+    confineStylesToTheEmbed()
   ],
   build: {
     outDir: 'dist',

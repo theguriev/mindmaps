@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace MindMaps\Document;
 
+defined( 'ABSPATH' ) || exit;
+
 /** Schema version stamped on every document this build writes. */
 const DOC_VERSION = 1;
 
@@ -80,6 +82,30 @@ function member( mixed $value, string $key ): mixed {
 		return $value[ $key ] ?? null;
 	}
 	return null;
+}
+
+/**
+ * Whether a value is a colour this plugin is willing to store.
+ *
+ * Every other optional field on a node is dropped when it is not one of the
+ * shapes the editor produces; `stroke` used to be the exception, accepted as
+ * any string at all. It is not decoration: it is written into an SVG attribute
+ * by the exporter, so a Contributor — the lowest role that may create a map —
+ * could store `#000" /><script>` and hand it to whoever exported the map next.
+ *
+ * Accepted: the hex forms (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) the editor
+ * emits, and a bare CSS keyword like `black`, which is the default the branch
+ * geometry falls back to. Both are alphanumeric by construction, so neither
+ * can close an attribute. Anything else is dropped and the branch takes its
+ * default colour, which is a visible loss and not a broken document.
+ *
+ * @param mixed $value Candidate colour.
+ */
+function is_color( mixed $value ): bool {
+	if ( ! \is_string( $value ) ) {
+		return false;
+	}
+	return 1 === \preg_match( '/^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|[a-z]{1,20})$/i', $value );
 }
 
 /**
@@ -197,7 +223,7 @@ function parse_node( mixed $value ): ?array {
 	if ( is_node_id( member( $value, 'parent' ) ) ) {
 		$node['parent'] = member( $value, 'parent' );
 	}
-	if ( \is_string( member( $value, 'stroke' ) ) ) {
+	if ( is_color( member( $value, 'stroke' ) ) ) {
 		$node['stroke'] = member( $value, 'stroke' );
 	}
 	if ( is_finite_number( member( $value, 'strokeWidth' ) ) ) {

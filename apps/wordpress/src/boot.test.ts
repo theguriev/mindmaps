@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  resolveControls,
   BootError,
   editingAllowed,
   intlLocale,
@@ -9,6 +10,8 @@ import {
   resolveCanEdit,
   resolveMapId,
   resolveMapParam,
+  resolveStartNew,
+  withoutParam,
   type BootConfig
 } from './boot'
 
@@ -232,5 +235,60 @@ describe('mapIdFromUrl', () => {
   it('round-trips with mapUrl', () => {
     const url = mapUrl('/wp-admin/admin.php?page=mind-maps', 'map', '13')
     expect(mapIdFromUrl(url, 'map')).toBe('13')
+  })
+})
+
+describe('resolveStartNew', () => {
+  it('reads the admin bar\'s request to start a map', () => {
+    expect(resolveStartNew('1')).toBe(true)
+    expect(resolveStartNew('true')).toBe(true)
+  })
+
+  it('defaults to the plain list', () => {
+    // Anything unrecognised is "just show me the list": opening a picker
+    // nobody asked for is the more annoying way to be wrong.
+    expect(resolveStartNew(undefined)).toBe(false)
+    expect(resolveStartNew(null)).toBe(false)
+    expect(resolveStartNew('0')).toBe(false)
+    expect(resolveStartNew('yes')).toBe(false)
+  })
+})
+
+describe('withoutParam', () => {
+  const ADMIN = '/wp-admin/admin.php?page=mind-maps&new=1&map=42'
+
+  it('spends the one-shot marker without disturbing the rest', () => {
+    // The marker asked for a map; once it exists the address must lose it, or
+    // a reload would ask for a second one.
+    expect(withoutParam(ADMIN, 'new')).toBe('/wp-admin/admin.php?page=mind-maps&map=42')
+  })
+
+  it('is a no-op when the parameter is absent, and keeps the fragment', () => {
+    expect(withoutParam('/wp-admin/admin.php?page=mind-maps#top', 'new')).toBe(
+      '/wp-admin/admin.php?page=mind-maps#top'
+    )
+  })
+
+  it('returns a relative URL, whatever it was given', () => {
+    const result = withoutParam('http://site.test' + ADMIN, 'new')
+    expect(result.startsWith('/wp-admin/')).toBe(true)
+    expect(result).not.toContain('site.test')
+  })
+})
+
+describe('resolveControls', () => {
+  it('draws the controls unless a mount says not to', () => {
+    // Absent is the case that matters: the admin screen and every embed
+    // written before this existed must keep their toolbar.
+    expect(resolveControls(undefined)).toBe(true)
+    expect(resolveControls(null)).toBe(true)
+    expect(resolveControls('1')).toBe(true)
+    expect(resolveControls('anything else')).toBe(true)
+  })
+
+  it('takes them away on the documented off values', () => {
+    expect(resolveControls('0')).toBe(false)
+    expect(resolveControls('false')).toBe(false)
+    expect(resolveControls(' NO ')).toBe(false)
   })
 })
